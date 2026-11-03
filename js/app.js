@@ -211,13 +211,14 @@
       });
     };
     const onMove = (e) => {
+      if (card.classList.contains("flipped") || e.pointerType === "touch") return;
       const r = card.getBoundingClientRect();
       set(((e.clientX - r.left) / r.width) * 2 - 1, ((e.clientY - r.top) / r.height) * 2 - 1);
       card.classList.remove("sway");
     };
     card.addEventListener("pointermove", onMove);
     card.addEventListener("pointerleave", () => { set(0, 0); card.classList.add("sway"); });
-    const onOrient = (e) => { if (e.gamma == null) return; card.classList.remove("sway"); set(Math.max(-1, Math.min(1, e.gamma / 30)), Math.max(-1, Math.min(1, (e.beta - 40) / 30))); };
+    const onOrient = (e) => { if (e.gamma == null || card.classList.contains("flipped")) return; card.classList.remove("sway"); set(Math.max(-1, Math.min(1, e.gamma / 30)), Math.max(-1, Math.min(1, (e.beta - 40) / 30))); };
     window.addEventListener("deviceorientation", onOrient);
     t.style.transition = "transform .25s ease-out";
     return () => window.removeEventListener("deviceorientation", onOrient);
@@ -415,7 +416,20 @@
     const n = vList[vIdx]; if (vCleanup) vCleanup();
     $("#viewerCard").innerHTML = cardHTML(n, { flippable: true, sway: true, lazy: false });
     const card = $("#viewerCard .card"); vCleanup = attachTilt(card);
-    card.addEventListener("click", (e) => { if (e.target.closest(".b-in") && card.classList.contains("flipped") && e.target.closest(".b-in").scrollHeight > e.target.closest(".b-in").clientHeight && e.detail === 0) return; card.classList.toggle("flipped"); vibrate(10); $("#viewerHint").textContent = card.classList.contains("flipped") ? "Toca de nuevo para ver el cromo" : "Toca el cromo para darle la vuelta"; });
+    let flipT;
+    card.addEventListener("click", () => {
+      clearTimeout(flipT);
+      if (!card.classList.contains("flipped")) {
+        card.classList.add("flipped");
+        // al terminar el giro, el reverso queda plano (sin 3D) para poder desplazarlo con el dedo
+        flipT = setTimeout(() => card.classList.add("flat"), 720);
+      } else {
+        card.classList.remove("flat");
+        requestAnimationFrame(() => requestAnimationFrame(() => card.classList.remove("flipped")));
+      }
+      vibrate(10);
+      $("#viewerHint").textContent = card.classList.contains("flipped") ? "Desliza para leer · toca para volver" : "Toca el cromo para darle la vuelta";
+    });
     $("#vOwned").textContent = `${n} · tienes ${S.owned[n] || 0}`;
     $("#vPrev").style.visibility = vList.length > 1 ? "visible" : "hidden"; $("#vNext").style.visibility = vList.length > 1 ? "visible" : "hidden";
     $("#viewerHint").textContent = "Toca el cromo para darle la vuelta";
