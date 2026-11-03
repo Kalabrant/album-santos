@@ -1,6 +1,6 @@
 /* Service worker: la app funciona sin conexión.
    Sube VERSION cada vez que cambies archivos de la app. */
-const VERSION = "v2";
+const VERSION = "v3";
 const SHELL = `santos-shell-${VERSION}`;
 const IMGS = "santos-img";
 const FILES = [
