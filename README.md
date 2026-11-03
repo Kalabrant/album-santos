@@ -13,9 +13,9 @@ App web instalable (PWA) para coleccionar los cromos de 500 santos y advocacione
 
 ## Añadir imágenes de santos
 1. Pon los `.jpg` (con nombre «N. NOMBRE.jpg», como salen del PDF) en una carpeta.
-2. Ejecuta `pip install pillow opencv-python-headless numpy` y luego
+2. Ejecuta `pip install pillow` y luego
    `python tools/actualizar_imagenes.py "RUTA/DE/LA/CARPETA"`.
-   El script quita el fondo gris, reduce las imágenes, las guarda en `img/santos/NNN.webp` y actualiza `data/imagenes.js`.
+   El script reduce las imágenes (completas, con su fondo), las guarda en `img/santos/NNN.webp` y actualiza `data/imagenes.js`.
 3. Sube el cambio a GitHub. Los cromos sin imagen muestran un emblema de su sección.
 
 ## Archivos

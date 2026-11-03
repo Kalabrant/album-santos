@@ -172,7 +172,7 @@ h2.section { font-size: 18px; margin: 26px 0 12px; font-weight: 800; display: fl
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 12px; }
 @media (min-width: 700px) { .grid { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 16px; } }
 
-.slot { position: relative; aspect-ratio: 5 / 8; border-radius: 10px; }
+.slot { position: relative; aspect-ratio: 3 / 4; border-radius: 10px; }
 .slot.empty { border: 2px dashed #d9ccb8; background: repeating-linear-gradient(135deg, #f7f0e4 0 8px, #f3eadc 8px 16px); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 8px; color: #b2a38c; }
 .slot.empty .num { font-weight: 800; font-size: 26px; line-height: 1; }
 .slot.empty .nm { font-size: 10.5px; font-weight: 600; margin-top: 6px; line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
@@ -185,7 +185,7 @@ h2.section { font-size: 18px; margin: 26px 0 12px; font-weight: 800; display: fl
 /* ───────── CROMO ───────── */
 .card {
   --c1: #1d3a8a; --c2: #8fb8ff; --c3: #0b0d1c;
-  position: relative; width: 100%; aspect-ratio: 5 / 8; container-type: inline-size;
+  position: relative; width: 100%; aspect-ratio: 3 / 4; container-type: inline-size;
   perspective: 900px; user-select: none; -webkit-user-select: none;
 }
 .card-3d { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform .7s cubic-bezier(.2,.8,.2,1); transform: rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)); }
@@ -292,7 +292,7 @@ h2.section { font-size: 18px; margin: 26px 0 12px; font-weight: 800; display: fl
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 .overlay .close { position: absolute; top: calc(12px + var(--safe-t)); right: 14px; width: 44px; height: 44px; border-radius: 50%; background: rgba(255,255,255,.12); color: #fff; display: grid; place-items: center; z-index: 3; }
 .overlay .close svg { width: 22px; height: 22px; }
-.viewer { width: min(78vw, 380px, calc((100vh - 170px) * .625)); }
+.viewer { width: min(78vw, 380px, calc((100vh - 170px) * .75)); }
 .viewer .card { animation: popIn .5s cubic-bezier(.2,1.4,.4,1); }
 @keyframes popIn { from { transform: scale(.6) rotateY(-30deg); opacity: 0; } to { transform: none; opacity: 1; } }
 .viewer-hint { color: #cfc8e6; font-size: 14px; margin-top: 18px; text-align: center; display: flex; align-items: center; gap: 8px; }
@@ -338,7 +338,7 @@ h2.section { font-size: 18px; margin: 26px 0 12px; font-weight: 800; display: fl
 @keyframes blink { 50% { opacity: .4; } }
 .reveal { display: none; flex-direction: column; align-items: center; width: 100%; }
 .reveal.show { display: flex; }
-.reveal .deal { position: relative; width: min(66vw, 300px, calc((100vh - 220px) * .625)); aspect-ratio: 5 / 8; }
+.reveal .deal { position: relative; width: min(66vw, 300px, calc((100vh - 220px) * .75)); aspect-ratio: 3 / 4; }
 .reveal .deal .card { position: absolute; inset: 0; transition: transform .55s cubic-bezier(.2,.9,.3,1.1), opacity .45s; }
 .reveal .deal .card.gone { transform: translate(120%, -10%) rotate(18deg); opacity: 0; pointer-events: none; }
 .reveal .deal .card.under { transform: translateY(10px) scale(.95); filter: brightness(.6); }
@@ -389,3 +389,14 @@ h2.section { font-size: 18px; margin: 26px 0 12px; font-weight: 800; display: fl
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* Imagen completa a sangre: ocupa todo el cromo */
+.front .art.full { inset: 0; }
+.front .art.full img { object-fit: cover; object-position: 50% 50%; -webkit-mask-image: none; mask-image: none; }
+.front .art.full ~ .frame { box-shadow: 0 0 0 100cqw rgba(0,0,0,0); }
+.front .bg.hide { display: none; }
+/* Sobre fondo claro: marco del color de la sección y brillo más suave */
+.front .art.full ~ .frame { border-color: var(--c1); }
+.card.premium .front .art.full ~ .frame { border-color: #c9962e; }
+.card.premium .front .art.full ~ .holo { mix-blend-mode: overlay; opacity: .3; }
+.card.premium .face.front:has(.art.full) { box-shadow: 0 0 0 .7cqw #d9a93a, 0 4cqw 9cqw -4cqw rgba(0,0,0,.6); }

@@ -4,16 +4,14 @@ Uso:  python tools/actualizar_imagenes.py  CARPETA_CON_LAS_IMAGENES
 
 - Acepta archivos .jpg/.jpeg/.png/.webp nombrados con el número ("001.jpg",
   "1 - San Pedro.jpg") o con el título del santo ("San Pedro Apóstol.jpg").
-- Quita el fondo gris (tools/recorte.py), los reduce a 600 px de ancho,
+- Usa la imagen completa (con su fondo), la reduce a 600 px de ancho,
   los guarda como img/santos/NNN.webp
   y regenera data/imagenes.js, que le dice a la app qué cromos tienen imagen.
-Necesita:  pip install pillow opencv-python-headless numpy
+Necesita:  pip install pillow
 """
 import json, re, sys, unicodedata
 from pathlib import Path
 from PIL import Image
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from recorte import cut
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "img" / "santos"
@@ -52,9 +50,7 @@ def main():
             im = Image.open(f).convert("RGB")
             if im.width > 600:
                 im = im.resize((600, round(im.height * 600 / im.width)), Image.LANCZOS)
-            tmp = OUT / "_tmp.png"; im.save(tmp)
-            cut(str(tmp)).save(dest, "WEBP", quality=82, method=6)
-            tmp.unlink()
+            im.save(dest, "WEBP", quality=82, method=6)
         done[n] = "webp"
     for f in OUT.glob("*.webp"):
         if re.fullmatch(r"\d{3}", f.stem):
