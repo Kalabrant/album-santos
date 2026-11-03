@@ -9,7 +9,7 @@ Uso:  python tools/actualizar_imagenes.py  CARPETA_CON_LAS_IMAGENES
   y regenera data/imagenes.js, que le dice a la app qué cromos tienen imagen.
 Necesita:  pip install pillow
 """
-import json, re, sys, unicodedata
+import json, re, sys, time, unicodedata
 from pathlib import Path
 from PIL import Image
 
@@ -57,7 +57,8 @@ def main():
             done.setdefault(int(f.stem), "webp")
     (ROOT / "data" / "imagenes.js").write_text(
         "/* Generado por tools/actualizar_imagenes.py: cromos que ya tienen imagen */\nwindow.IMAGENES = "
-        + json.dumps({str(k): v for k, v in sorted(done.items())}) + ";\n", encoding="utf-8")
+        + json.dumps({str(k): v for k, v in sorted(done.items())}) + ";\n"
+        + f"window.IMAGENES_V = {int(time.time())};\n", encoding="utf-8")
     print(f"{len(done)} imágenes listas en img/santos/.")
     if unknown:
         print("No supe a qué santo corresponden:", *unknown, sep="\n  ")

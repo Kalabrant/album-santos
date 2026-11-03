@@ -173,7 +173,8 @@
   };
   const ICON_COVER = '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor"><path d="M50 4l40 46-40 46-40-46z" stroke-width="2.4"/><path d="M50 18l28 32-28 32-28-32z" stroke-width="1.4" opacity=".6"/><path d="M50 30v40M38 44h24" stroke-width="5" stroke-linecap="round"/></svg>';
 
-  function imgSrc(n) { const e = IMGS[n]; return e ? `img/santos/${String(n).padStart(3, "0")}.${e}` : null; }
+  const IMG_V = window.IMAGENES_V || 1; // cambia con cada tanda de imágenes, para no ver copias viejas
+  function imgSrc(n) { const e = IMGS[n]; return e ? `img/santos/${String(n).padStart(3, "0")}.${e}?v=${IMG_V}` : null; }
 
   function cardHTML(n, { flippable = false, cover = false, sway = false, lazy = true } = {}) {
     const s = BY_N.get(n);
