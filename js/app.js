@@ -589,7 +589,10 @@
   let deferredInstall = null;
   window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); deferredInstall = e; const b = $("#installBtn"); if (b) b.style.display = ""; });
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+    window.addEventListener("load", () => navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then((r) => r.update()).catch(() => {}));
+    // cuando llega una versión nueva, recargamos una vez para verla
+    let reloaded = false, hadCtrl = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener("controllerchange", () => { if (hadCtrl && !reloaded) { reloaded = true; location.reload(); } });
   }
 
   // Si la app queda abierta y cambia el día, refrescamos
