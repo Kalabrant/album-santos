@@ -21,4 +21,4 @@ App web instalable (PWA) para coleccionar los cromos de 500 santos y advocacione
 ## Archivos
 - `data/santos.js`: los 500 santos (extraídos del PDF) y la marca de premium.
 - `data/retos.js`: el banco de retos; el campo `s` liga un reto a un cromo.
-- `js/app.js`, `css/app.css`: la app. `sw.js`: modo sin conexión (sube `VERSION` al cambiar archivos).
+- `js/app.js`, `css/app.css`: la app. `sw.js`: modo sin conexión (al cambiar archivos, sube `VERSION` en sw.js y el `?v=` de index.html).

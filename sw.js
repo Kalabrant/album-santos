@@ -1,6 +1,6 @@
 /* Service worker: la app funciona sin conexión.
    Sube VERSION cada vez que cambies archivos de la app. */
-const VERSION = "v6";
+const VERSION = "v7";
 const SHELL = `santos-shell-${VERSION}`;
 const IMGS = `santos-img-${VERSION}`;
 const FILES = [
@@ -20,6 +20,6 @@ self.addEventListener("fetch", (e) => {
     return;
   }
   // resto: red primero (para recibir novedades), caché si no hay conexión
-  e.respondWith(fetch(e.request).then((res) => { if (res.ok) { const cp = res.clone(); caches.open(SHELL).then((c) => c.put(e.request, cp)); } return res; })
+  e.respondWith(fetch(e.request, { cache: "no-cache" }).then((res) => { if (res.ok) { const cp = res.clone(); caches.open(SHELL).then((c) => c.put(e.request, cp)); } return res; })
     .catch(() => caches.match(e.request, { ignoreSearch: true }).then((r) => r || caches.match("index.html"))));
 });
