@@ -139,8 +139,7 @@
   const dupCount = () => Object.values(S.owned).reduce((a, c) => a + Math.max(0, c - 1), 0);
 
   const weight = (s) => (s.x ? 0 : s.p ? PREMIUM_WEIGHT : 1); // x: solo sale el día de su fiesta
-  // Cuantos menos cromos te faltan, más fácil es que salga uno nuevo (el final no se hace eterno)
-  const missingBoost = () => 1 + 1.5 * Math.pow(ownedCount() / TOTAL, 2);
+  const missingBoost = () => 0.4; // los cromos que faltan salen menos: más repetidas, álbum más largo
   function drawRandom(r = Math.random, only = null) {
     const boost = missingBoost();
     const list = only ? SANTOS.filter(only) : SANTOS;
