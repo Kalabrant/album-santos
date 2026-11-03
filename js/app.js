@@ -555,7 +555,7 @@
       <div class="btn-row"><button class="btn btn-ghost btn-small" id="exportBtn">⬇️ Guardar copia</button><label class="btn btn-ghost btn-small">⬆️ Cargar copia<input type="file" id="importInp" accept="application/json,.json" hidden></label></div></div>
       <div class="panel"><h3>Empezar de cero</h3><p>Borra toda tu colección de este dispositivo.</p><button class="btn btn-ghost btn-small" id="resetBtn" style="color:#c2414b">Borrar mi álbum</button></div>`;
     $("#view-mas").innerHTML = html;
-    if (deferredInstall) $("#installBtn").style.display = "";
+    if (!isStandalone()) $("#installBtn").style.display = "";
     updateChrome();
   }
   $("#view-mas").addEventListener("click", (e) => {
@@ -571,7 +571,7 @@
       if (!b.dataset.sure) { b.dataset.sure = "1"; b.textContent = "Toca otra vez para confirmar"; setTimeout(() => { b.dataset.sure = ""; b.textContent = "Borrar mi álbum"; }, 4000); return; }
       S = fresh(); save(); location.reload(); return;
     }
-    if (e.target.closest("#installBtn") && deferredInstall) { deferredInstall.prompt(); deferredInstall = null; }
+    if (e.target.closest("#installBtn")) openInstall();
   });
   $("#view-mas").addEventListener("change", (e) => {
     if (e.target.id !== "importInp" || !e.target.files[0]) return;
@@ -597,12 +597,38 @@
   function welcome() {
     if (S.welcome) return;
     S.welcome = true; S.welcomePending = true; S.packs = (S.packs || 0) + 1; save();
-    setTimeout(() => toast("¡Bienvenido! Te regalamos tu primer sobre 🎁"), 400);
+    setTimeout(() => { const m = "¡Bienvenido! Te regalamos tu primer sobre 🎁"; if ($("#install").classList.contains("open")) pendingToast = m; else toast(m); }, 2000);
   }
 
   /* ───────── Instalación (PWA) ───────── */
-  let deferredInstall = null;
-  window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); deferredInstall = e; const b = $("#installBtn"); if (b) b.style.display = ""; });
+  let deferredInstall = null, pendingToast = null;
+  const SHARE_ICO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8"/></svg>';
+  const isStandalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  const UA = navigator.userAgent;
+  const isIOS = /iPhone|iPad|iPod/.test(UA) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const inApp = /FBAN|FBAV|Instagram|Line\/|TikTok|Snapchat/i.test(UA);
+  function renderInstall() {
+    let h;
+    if (isStandalone()) h = `<p class="install-sub">¡Ya la tienes instalada! 🎉</p>`;
+    else if (inApp) h = `<ol class="install-steps"><li>Toca los tres puntos ⋯ de arriba</li><li>Elige «Abrir en el navegador» (Chrome o Safari)</li><li>Allí te aparecerá el botón para instalarla</li></ol>`;
+    else if (deferredInstall) h = `<button class="btn btn-primary" id="installNow">📲 Instalar la app</button>`;
+    else if (isIOS) h = `<ol class="install-steps"><li>Toca el botón Compartir ${SHARE_ICO} de Safari</li><li>Elige «Añadir a pantalla de inicio»</li><li>Pulsa «Añadir» y ábrela desde tu pantalla</li></ol>`;
+    else h = `<ol class="install-steps"><li>Abre el menú ⋮ de Chrome</li><li>Elige «Instalar aplicación» o «Añadir a pantalla de inicio»</li></ol>`;
+    $("#installBody").innerHTML = h;
+  }
+  function openInstall() { renderInstall(); $("#install").classList.add("open"); }
+  function closeInstall() { $("#install").classList.remove("open"); if (pendingToast) { toast(pendingToast); pendingToast = null; } try { localStorage.setItem(KEY + "-noinstall", "1"); } catch {} }
+  $("#install").addEventListener("click", async (e) => {
+    if (e.target.closest("#installNow") && deferredInstall) { deferredInstall.prompt(); const r = await deferredInstall.userChoice.catch(() => ({})); deferredInstall = null; if (r.outcome === "accepted") { closeInstall(); toast("¡Instalada! Búscala en tu pantalla de inicio"); } else renderInstall(); return; }
+    if (e.target.closest("#installLater") || e.target === $("#install")) closeInstall();
+  });
+  window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); deferredInstall = e; const b = $("#installBtn"); if (b) b.style.display = ""; if ($("#install").classList.contains("open")) renderInstall(); });
+  window.addEventListener("appinstalled", () => { closeInstall(); });
+  // El enlace …/?instalar abre directamente la hoja; en la primera visita también aparece
+  const wantsInstall = /[?&]instalar\b/.test(location.search);
+  let dismissed = false; try { dismissed = !!localStorage.getItem(KEY + "-noinstall"); } catch {}
+  if (wantsInstall) try { history.replaceState(null, "", location.pathname + location.hash); } catch {}
+  if (!isStandalone() && (wantsInstall || !dismissed)) setTimeout(openInstall, wantsInstall ? 200 : 1600);
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
     window.addEventListener("load", () => navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then((r) => r.update()).catch(() => {}));
     // cuando llega una versión nueva, recargamos una vez para verla

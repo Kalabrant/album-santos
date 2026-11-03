@@ -2,7 +2,7 @@
 
 App web instalable (PWA) para coleccionar los cromos de 500 santos y advocaciones cumpliendo cada día cinco retos de vida de fe. Funciona sin conexión y guarda el progreso en el propio dispositivo.
 
-**Abrir la app:** https://kalabrant.github.io/album-santos/
+**Abrir la app:** https://kalabrant.github.io/album-santos/ · **Enlace para instalar:** https://kalabrant.github.io/album-santos/?instalar
 
 ## Cómo funciona
 - Cada día hay 5 retos (oración, Eucaristía, caridad, formación y virtud). Al cumplirlos se gana un sobre.
