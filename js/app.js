@@ -125,12 +125,13 @@
   const ownedCount = () => Object.keys(S.owned).filter((n) => S.owned[n] > 0).length;
   const dupCount = () => Object.values(S.owned).reduce((a, c) => a + Math.max(0, c - 1), 0);
 
+  const weight = (s) => (s.x ? 0 : s.p ? PREMIUM_WEIGHT : 1); // x: solo sale el día de su fiesta
   function drawRandom(r = Math.random) {
     let total = 0;
-    for (const s of SANTOS) total += s.p ? PREMIUM_WEIGHT : 1;
+    for (const s of SANTOS) total += weight(s);
     let x = r() * total;
-    for (const s of SANTOS) { x -= s.p ? PREMIUM_WEIGHT : 1; if (x <= 0) return s.n; }
-    return SANTOS[SANTOS.length - 1].n;
+    for (const s of SANTOS) { const w = weight(s); if (!w) continue; x -= w; if (x <= 0) return s.n; }
+    return SANTOS.filter((s) => weight(s)).pop().n;
   }
   function buildPack(kind = "normal") {
     const d = today(), D = dayState(d);
@@ -579,16 +580,16 @@
   });
   function doSwap() {
     if (dupCount() < SWAP_COST) return;
-    const missing = SANTOS.filter((s) => !has(s.n)); if (!missing.length) return;
+    const missing = SANTOS.filter((s) => !has(s.n) && !s.x); if (!missing.length) return toast("Los cromos que te faltan solo salen en su fiesta");
     // quitamos repetidas empezando por las que más se repiten
     let left = SWAP_COST;
     while (left > 0) {
       const top = SANTOS.filter((s) => (S.owned[s.n] || 0) > 1).sort((a, b) => S.owned[b.n] - S.owned[a.n] || a.p - b.p)[0];
       S.owned[top.n]--; left--;
     }
-    let tot = 0; for (const s of missing) tot += s.p ? PREMIUM_WEIGHT : 1;
+    let tot = 0; for (const s of missing) tot += weight(s);
     let x = Math.random() * tot, pick = missing[0].n;
-    for (const s of missing) { x -= s.p ? PREMIUM_WEIGHT : 1; if (x <= 0) { pick = s.n; break; } }
+    for (const s of missing) { x -= weight(s); if (x <= 0) { pick = s.n; break; } }
     S.swaps = (S.swaps || 0) + 1; save();
     startOpening("swap", [pick]);
   }
