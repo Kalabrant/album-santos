@@ -120,24 +120,43 @@
     D.swapUsed = true; save(); renderHoy();
   }
 
+  /* ───────── Reto de la semana (lunes a domingo) ───────── */
+  const WEEKLY = window.RETOS_SEMANA || [];
+  function weekKey(d = today()) { const m = addDays(d, -((d.getDay() + 6) % 7)); return dkey(m); } // lunes
+  function weekState() {
+    const k = weekKey();
+    if (!S.week || S.week.k !== k) {
+      const r = rng("semana-" + k);
+      S.week = { k, i: Math.floor(r() * WEEKLY.length), done: false };
+      save();
+    }
+    return S.week;
+  }
+
   /* ───────── Colección ───────── */
   const has = (n) => (S.owned[n] || 0) > 0;
   const ownedCount = () => Object.keys(S.owned).filter((n) => S.owned[n] > 0).length;
   const dupCount = () => Object.values(S.owned).reduce((a, c) => a + Math.max(0, c - 1), 0);
 
   const weight = (s) => (s.x ? 0 : s.p ? PREMIUM_WEIGHT : 1); // x: solo sale el día de su fiesta
-  function drawRandom(r = Math.random) {
+  // Cuantos menos cromos te faltan, más fácil es que salga uno nuevo (el final no se hace eterno)
+  const missingBoost = () => 1 + 1.5 * Math.pow(ownedCount() / TOTAL, 2);
+  function drawRandom(r = Math.random, only = null) {
+    const boost = missingBoost();
+    const list = only ? SANTOS.filter(only) : SANTOS;
+    const w = (s) => weight(s) * (has(s.n) ? 1 : boost);
     let total = 0;
-    for (const s of SANTOS) total += weight(s);
+    for (const s of list) total += w(s);
     let x = r() * total;
-    for (const s of SANTOS) { const w = weight(s); if (!w) continue; x -= w; if (x <= 0) return s.n; }
-    return SANTOS.filter((s) => weight(s)).pop().n;
+    for (const s of list) { const k = w(s); if (!k) continue; x -= k; if (x <= 0) return s.n; }
+    return list.filter((s) => weight(s)).pop().n;
   }
   function buildPack(kind = "normal") {
     const d = today(), D = dayState(d);
     const cards = [], why = {};
     const push = (n, reason) => { if (!cards.includes(n)) { cards.push(n); if (reason) why[n] = reason; } };
     if (kind === "welcome") push(1, "Bienvenida");
+    if (kind === "premium") push(drawRandom(Math.random, (s) => s.p && !s.x), "Premium seguro");
     for (const n of saintsOfDay(d)) push(n, "Santo del día");
     for (const r of D.retos) {
       if (r.s && D.done.includes(r.id) && !D.granted.includes(r.s)) { push(r.s, "Por tu reto"); D.granted.push(r.s); }
@@ -250,7 +269,7 @@
     const own = ownedCount();
     $("#topCount").textContent = `${own} de ${TOTAL} cromos`;
     $("#streakN").textContent = S.streak || 0;
-    const bp = $("#badgePacks"); bp.textContent = S.packs || ""; bp.dataset.n = S.packs;
+    const np = (S.packs || 0) + (S.ppacks || 0); const bp = $("#badgePacks"); bp.textContent = np || ""; bp.dataset.n = np;
     const D = dayState(); const left = D.claimed ? 0 : D.retos.length - D.done.length;
     const bh = $("#badgeHoy"); bh.textContent = left || ""; bh.dataset.n = left;
     const dc = dupCount(); const bd = $("#badgeDup"); const can = Math.floor(dc / SWAP_COST); bd.textContent = can || ""; bd.dataset.n = can;
@@ -301,9 +320,17 @@
     }).join("") + `</div>`;
 
     if (done === total && !D.claimed) html += `<div class="claim"><button class="btn btn-primary" id="claimBtn">🎉 ¡Recoge tu sobre!</button></div>`;
+    if (WEEKLY.length) {
+      const W = weekState(), dl = 7 - ((d.getDay() + 6) % 7);
+      html += `<h2 class="section">🌟 Reto de la semana</h2>
+        <div class="weekly ${W.done ? "done" : ""}"><div class="wk-badge">Sobre premium</div>
+        <div class="wk-t">${esc(WEEKLY[W.i])}</div>
+        <div class="wk-foot"><small>${W.done ? "¡Cumplido! El lunes llega un reto nuevo." : dl === 1 ? "Último día: termina hoy, domingo" : `Tienes ${dl} días, hasta el domingo`}</small>
+        ${W.done ? `<span class="wk-ok">✓ Hecho</span>` : `<button class="btn btn-primary btn-small" id="weeklyBtn">¡Lo cumplí!</button>`}</div></div>`;
+    }
     html += `<div class="retos-actions">${!D.swapUsed && !D.claimed ? `<button class="btn btn-ghost btn-small" id="swapBtn">🔄 Cambiar un reto</button>` : ""}
       ${S.packs ? `<button class="btn btn-dark btn-small" data-goto="sobres">📦 Tienes ${S.packs} ${S.packs === 1 ? "sobre" : "sobres"} sin abrir</button>` : ""}</div>
-      <p class="note">Toca un reto cuando lo cumplas. Es un compromiso contigo y con Dios: sé sincero. Si un reto tiene un cromo seguro, saldrá en el sobre de hoy.</p>`;
+      <p class="note">Toca un reto cuando lo cumplas y te llevas un cromo al momento. Es un compromiso contigo y con Dios: sé sincero. Con los cinco, ¡sobre completo!</p>`;
 
     const own = ownedCount();
     html += `<h2 class="section">📊 Tu colección</h2><div class="stats">
@@ -323,8 +350,17 @@
       const i = D.done.indexOf(r.id);
       if (i >= 0) D.done.splice(i, 1); else { D.done.push(r.id); vibrate(15); }
       if (D.done.length === D.retos.length) markStreak();
+      // Un cromo suelto por cada reto cumplido (solo la primera vez)
+      D.cards = D.cards || [];
+      let gift = null;
+      if (i < 0 && !D.cards.includes(r.id)) {
+        D.cards.push(r.id);
+        if (r.s && !D.granted.includes(r.s)) { gift = { n: r.s, why: "Por tu reto" }; D.granted.push(r.s); }
+        else gift = { n: drawRandom(), why: null };
+      }
       save(); renderHoy();
-      if (D.done.length === D.retos.length && !D.claimed) { confetti(60); vibrate([30, 40, 30]); }
+      if (gift) setTimeout(() => startOpening("reto", [gift.n], gift.why ? { [gift.n]: gift.why } : {}), 350);
+      else if (D.done.length === D.retos.length && !D.claimed) { confetti(60); vibrate([30, 40, 30]); }
       return;
     }
     if (e.target.closest("#claimBtn")) {
@@ -333,6 +369,11 @@
       let extra = "";
       if (S.streak > 0 && S.streak % 7 === 0) { S.packs++; extra = " ¡Y uno extra por tu racha de 7 días!"; }
       save(); toast("¡Has ganado un sobre!" + extra); go("sobres"); return;
+    }
+    if (e.target.closest("#weeklyBtn")) {
+      const W = weekState(); if (W.done) return;
+      W.done = true; S.ppacks = (S.ppacks || 0) + 1; save(); confetti(90); vibrate([30, 40, 60]);
+      toast("¡Sobre premium ganado! ✨"); go("sobres"); return;
     }
     if (e.target.closest("#feastBtn")) { S.feastBonus[dkey(today())] = true; S.packs++; save(); confetti(70); toast("¡Feliz fiesta! Sobre extra añadido"); go("sobres"); return; }
     if (e.target.closest("#swapBtn")) {
@@ -445,15 +486,22 @@
   $("#viewer").addEventListener("touchend", (e) => { if (sx == null) return; const dx = e.changedTouches[0].clientX - sx; sx = null; if (Math.abs(dx) > 70 && vList.length > 1) (dx < 0 ? $("#vNext") : $("#vPrev")).click(); });
 
   /* ───────── Vista SOBRES ───────── */
-  const PACK_HTML = `<div class="pack"><div class="crimp t"></div><div class="crimp b"></div><div class="pk-in">${ICON_COVER}<b>Álbum de los Santos</b><small>Sobre de cromos</small></div></div>`;
+  const packHTML = (kind = "normal") => {
+    const label = kind === "premium" ? "Sobre premium" : kind === "reto" ? "Cromo del reto" : kind === "swap" ? "Canje" : "Sobre de cromos";
+    return `<div class="pack ${kind === "premium" ? "gold" : kind === "reto" || kind === "swap" ? "mini-pack" : ""}"><div class="crimp t"></div><div class="crimp b"></div><div class="pk-in">${ICON_COVER}<b>Álbum de los Santos</b><small>${label}</small></div></div>`;
+  };
+  const PACK_HTML = packHTML();
   function renderSobres() {
-    const n = S.packs || 0;
+    const n = S.packs || 0, pp = S.ppacks || 0;
     let html = `<h1 class="title">Tus sobres</h1><p class="subtitle">Cada sobre trae ${CARDS_PER_PACK} cromos al azar. Si es la fiesta de un santo, ¡sale seguro!</p>`;
+    if (pp > 0) html += `<div class="packs-area"><div class="pack-stack" id="ppackStack"><div class="pk">${packHTML("premium")}</div></div>
+        <div class="pack-count">✨ ${pp} ${pp === 1 ? "sobre premium" : "sobres premium"}</div>
+        <button class="btn btn-primary" style="margin-top:14px" id="openPremium">Abrir sobre premium</button></div>`;
     if (n > 0) {
       html += `<div class="packs-area"><div class="pack-stack" id="packStack">${Array.from({ length: Math.min(3, n) }, () => `<div class="pk">${PACK_HTML}</div>`).join("")}</div>
         <div class="pack-count">${n} ${n === 1 ? "sobre" : "sobres"} sin abrir</div>
         <button class="btn btn-primary" style="margin-top:14px" id="openBtn">Abrir sobre</button></div>`;
-    } else {
+    } else if (!pp) {
       const D = dayState();
       html += `<div class="panel no-packs"><div class="big">📭</div><h3>No tienes sobres ahora</h3><p>${D.claimed ? "Ya ganaste el sobre de hoy. ¡Vuelve mañana a por más retos!" : "Cumple los 5 retos de hoy para ganar un sobre nuevo."}</p>
         ${D.claimed ? "" : `<button class="btn btn-dark" data-goto="hoy">Ver retos de hoy</button>`}</div>`;
@@ -463,18 +511,21 @@
     updateChrome();
   }
   $("#view-sobres").addEventListener("click", (e) => {
+    if (e.target.closest("#openPremium") || e.target.closest("#ppackStack")) return startOpening("premium");
     if (e.target.closest("#openBtn") || e.target.closest("#packStack")) startOpening();
     const g = e.target.closest("[data-goto]"); if (g) go(g.dataset.goto);
   });
 
   /* ───────── Apertura del sobre ───────── */
   let pack = null, dealIdx = 0, opening = false;
-  function startOpening(kind = "normal", forced = null) {
-    if (!forced && (S.packs || 0) <= 0) return;
+  function startOpening(kind = "normal", forced = null, why = {}) {
+    if (!forced && kind === "premium" && (S.ppacks || 0) <= 0) return;
+    if (!forced && kind !== "premium" && (S.packs || 0) <= 0) return;
     askOrientation();
-    if (!forced && S.welcomePending) { kind = "welcome"; S.welcomePending = false; }
-    pack = forced ? { cards: forced, why: {} } : buildPack(kind);
-    if (!forced) { S.packs--; }
+    if (!forced && kind === "normal" && S.welcomePending) { kind = "welcome"; S.welcomePending = false; }
+    pack = forced ? { cards: forced, why } : buildPack(kind);
+    pack.kind = kind;
+    if (!forced) { if (kind === "premium") S.ppacks--; else S.packs--; }
     // los cromos se pegan ya en el álbum (así no se pierden si se cierra la app)
     pack.isNew = {};
     for (const n of pack.cards) { pack.isNew[n] = !has(n); S.owned[n] = (S.owned[n] || 0) + 1; }
@@ -482,7 +533,7 @@
     save(); updateChrome();
     dealIdx = 0; opening = true;
     const ov = $("#opening");
-    $("#bigPack").innerHTML = PACK_HTML; $("#bigPack").className = "big-pack"; $("#bigPack").style.display = "";
+    $("#bigPack").innerHTML = packHTML(kind); $("#bigPack").className = "big-pack" + (kind === "reto" ? " small" : ""); $("#bigPack").style.display = "";
     $("#tapHint").style.display = ""; $("#tapHint").textContent = forced ? "Toca para descubrir tu cromo" : "Toca el sobre para abrirlo";
     $("#reveal").classList.remove("show"); $("#summary").classList.remove("show"); ov.classList.remove("lit");
     ov.classList.add("open"); document.body.style.overflow = "hidden";
@@ -523,14 +574,15 @@
   function showSummary() {
     $("#reveal").classList.remove("show");
     const nuevos = pack.cards.filter((n) => pack.isNew[n]).length;
-    $("#summary").innerHTML = `<h2>${nuevos ? `¡${nuevos} ${nuevos === 1 ? "cromo nuevo" : "cromos nuevos"}!` : "¡Todas repetidas!"}</h2>
+    $("#summary").innerHTML = `<h2>${nuevos ? `¡${nuevos} ${nuevos === 1 ? "cromo nuevo" : "cromos nuevos"}!` : pack.cards.length === 1 ? "¡Repetida!" : "¡Todas repetidas!"}</h2>
       <p>${nuevos ? "Ya están pegados en tu álbum." : "Guárdalas: con " + SWAP_COST + " repetidas cambias por un cromo nuevo."}</p>
       <div class="row ${pack.cards.length > 5 ? "many" : ""}">${pack.cards.map((n) => `<div>${cardHTML(n)}<span class="tg ${pack.isNew[n] ? "" : "d"}">${pack.isNew[n] ? "NUEVO" : "REPE"}</span></div>`).join("")}</div>
-      <div class="btn-row" style="justify-content:center">${S.packs > 0 ? `<button class="btn btn-primary" id="againBtn">Abrir otro (${S.packs})</button>` : ""}<button class="btn btn-ghost" id="toAlbumBtn">Ver mi álbum</button></div>`;
+      <div class="btn-row" style="justify-content:center">${pack.kind === "reto" ? `<button class="btn btn-primary" id="backBtn">Seguir con mis retos</button>` : S.packs > 0 ? `<button class="btn btn-primary" id="againBtn">Abrir otro (${S.packs})</button>` : ""}<button class="btn btn-ghost" id="toAlbumBtn">Ver mi álbum</button></div>`;
     $("#summary").classList.add("show");
   }
   $("#summary").addEventListener("click", (e) => {
     if (e.target.closest("#againBtn")) { startOpening(); }
+    if (e.target.closest("#backBtn")) { closeOpening(); const D = dayState(); if (D.done.length === D.retos.length && !D.claimed) { confetti(60); vibrate([30, 40, 30]); } }
     if (e.target.closest("#toAlbumBtn")) { closeOpening(); filter = "todos"; go("album"); }
   });
   function closeOpening() { $("#opening").classList.remove("open", "lit"); document.body.style.overflow = ""; opening = false; if (current === "sobres") renderSobres(); else if (current === "mas") renderMas(); else if (current === "hoy") renderHoy(); }
@@ -641,7 +693,16 @@
   let lastKey = dkey(today());
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && dkey(today()) !== lastKey) { lastKey = dkey(today()); go(current); } });
 
+  /* ───────── Novedades (se muestran una vez a quien ya usaba la app) ───────── */
+  const NEWS_V = 1;
+  function maybeNews() {
+    if (!S.welcome || (S.news || 0) >= NEWS_V) { S.news = NEWS_V; save(); return; }
+    setTimeout(() => { if (!$("#install").classList.contains("open")) $("#news").classList.add("open"); else maybeNews._wait = true; }, 900);
+  }
+  $("#news").addEventListener("click", (e) => { if (e.target.closest("#newsOk") || e.target === $("#news")) { $("#news").classList.remove("open"); S.news = NEWS_V; save(); } });
+
   /* ───────── Arranque ───────── */
+  maybeNews();
   welcome();
   const start = (location.hash || "").slice(1);
   go(["hoy", "album", "sobres", "mas"].includes(start) ? start : "hoy");

@@ -160,3 +160,28 @@ window.RETO_CATS = {
   vida: { label: "Virtud", icon: "🔥" },
   santo: { label: "Santo del día", icon: "🕊️" },
 };
+
+/* Reto de la semana: uno por semana (de lunes a domingo). Al cumplirlo se gana
+   un sobre premium con un cromo irisado seguro. */
+window.RETOS_SEMANA = [
+  "Ve a Misa el domingo con un amigo o con tu familia",
+  "Confiésate esta semana",
+  "Visita a un enfermo, a un anciano o a alguien que esté solo",
+  "Reza el Rosario completo con tu familia o tus amigos",
+  "Pasa media hora ante el Santísimo",
+  "Haz un voluntariado o una obra de caridad en tu parroquia",
+  "Invita a alguien alejado a rezar o a ir a Misa contigo",
+  "Lee un Evangelio entero (Marcos es el más corto)",
+  "Ayuna de redes sociales un día completo y ofrécelo",
+  "Reconcíliate con alguien con quien estés peleado",
+  "Escribe una carta a mano a alguien que te ayudó en tu fe",
+  "Ve a la adoración o a una vigilia con tu grupo",
+  "Dona algo tuyo que valoras a quien lo necesite",
+  "Aprende el Credo de memoria y rézalo cada día de la semana",
+  "Peregrina a pie a un santuario o iglesia cercana",
+  "Ayuda en casa toda la semana sin que te lo pidan",
+  "Reza cada noche de la semana un examen de conciencia",
+  "Participa en una Misa entre semana además del domingo",
+  "Comparte tu fe en redes: un mensaje bonito sobre Jesús",
+  "Lee la vida completa de un santo y cuéntasela a alguien",
+];
