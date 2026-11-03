@@ -185,7 +185,7 @@
     const art = src
       ? `<img src="${src}" alt="" ${lazy ? 'loading="lazy"' : ""} decoding="async" onerror="this.remove()">`
       : `<div class="ph-lines"></div><div class="ph-lines b"></div><svg class="ph" viewBox="0 0 100 100" fill="none" stroke="currentColor">${ICONS[s.s]}</svg>`;
-    const front = `<div class="face front"><div class="bg ${src ? "hide" : ""}"></div><div class="art ${src ? "full" : ""}">${art}</div><div class="frame"></div>
+    const front = `<div class="face front"><div class="bg"></div><div class="art ${src ? "full" : ""}">${art}</div><div class="frame"></div>
       <div class="numero"><i class="side"></i><span class="gem ${r.length <= 2 ? "short" : ""}">${r}</span><i class="side"></i></div>
       <div class="plate"><span class="${cls}">-${esc(s.short)}-</span></div><div class="holo"></div><div class="shine"></div></div>`;
     const back = flippable ? `<div class="face back"><div class="b-in">
