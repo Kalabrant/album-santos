@@ -260,7 +260,7 @@
   }
 
   /* ───────── UI general ───────── */
-  function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), 2600); }
+  function toast(msg, ms = 2600) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), ms); }
   const vibrate = (p) => { try { navigator.vibrate && navigator.vibrate(p); } catch {} };
   function confetti(n = 80) {
     const box = document.createElement("div"); box.className = "confetti";
@@ -643,7 +643,7 @@
   });
   $("#view-mas").addEventListener("change", (e) => {
     if (e.target.id !== "importInp" || !e.target.files[0]) return;
-    e.target.files[0].text().then((t) => { const j = JSON.parse(t); if (j.app !== "album-santos") throw 0; S = Object.assign(fresh(), j.state); save(); toast("Copia cargada"); renderMas(); }).catch(() => toast("Ese archivo no es una copia válida"));
+    e.target.files[0].text().then((t) => { const j = JSON.parse(t); if (j.app !== "album-santos") throw 0; const keep = { dev: S.dev, inbox: S.inbox, usedReq: S.usedReq, outbox: S.outbox }; S = Object.assign(fresh(), j.state, keep); save(); toast("Copia cargada"); renderMas(); }).catch(() => toast("Ese archivo no es una copia válida"));
   });
   function doSwap() {
     if (dupCount() < SWAP_COST) return;
@@ -746,16 +746,20 @@
     h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
     return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36).toUpperCase();
   }
-  const reqCode = (nonce) => `SANTOS1R.${S.dev}.${nonce}`;
-  const giftCode = (n, dev, nonce) => { const b = `SANTOS1T.${n}.${dev}.${nonce}.${S.dev}`; return `${b}.${th(TSALT + b)}`; };
+  // Los códigos son enlaces: se pueden leer desde la app o con la cámara normal del móvil
+  const APP_URL = location.origin + location.pathname;
+  const reqCode = (nonce) => `${APP_URL}#dar=SANTOS1R.${S.dev}.${nonce}`;
+  const giftCode = (n, dev, nonce) => { const b = `SANTOS1T.${n}.${dev}.${nonce}.${S.dev}`; return `${APP_URL}#recibir=${b}.${th(TSALT + b)}`; };
+  const RE_REQ = /SANTOS1R\.([A-Z0-9]{10})\.([A-Z0-9]{8})/;
+  const RE_GIFT = /(SANTOS1T\.(\d{1,3})\.([A-Z0-9]{10})\.([A-Z0-9]{8})\.([A-Z0-9]{10}))\.([A-Z0-9]+)/;
   function qrSVG(text) {
     const q = qrcode(0, "M"); q.addData(text); q.make();
     return q.createSvgTag({ cellSize: 6, margin: 2, scalable: true });
   }
   let tradeState = null, scanStop = null;
   const tradeBody = () => $("#tradeBody");
-  function openTrade(mode) {
-    tradeState = { mode };
+  function openTrade(mode, req = null) {
+    tradeState = { mode, req };
     $("#trade").classList.add("open"); document.body.style.overflow = "hidden";
     if (mode === "recibir") showRequest(); else pickDup();
   }
@@ -772,20 +776,21 @@
     const dups = SANTOS.filter((s) => (S.owned[s.n] || 0) > 1);
     const out = (S.outbox || []).filter((x) => Date.now() - x.t < 7 * 864e5);
     tradeBody().innerHTML = `<h2>Regalar una repetida</h2>
-      ${dups.length ? `<p class="install-sub">Elige el cromo que quieres pasar. Se quitará una copia de tu álbum.</p><div class="dups trade-dups">${dups.map((s) => `<div class="slot has" data-give="${s.n}">${cardHTML(s.n)}<span class="count">×${S.owned[s.n]}</span></div>`).join("")}</div>`
-        : `<p class="install-sub">Aún no tienes repetidas para regalar.</p>`}
+      ${dups.length ? `<p class="install-sub">${tradeState.req ? "Ya tengo el código de tu amigo. " : ""}Elige el cromo que quieres pasar. Se quitará una copia de tu álbum.</p><div class="dups trade-dups">${dups.map((s) => `<div class="slot has" data-give="${s.n}">${cardHTML(s.n)}<span class="count">×${S.owned[s.n]}</span></div>`).join("")}</div>`
+        : `<p class="install-sub">Aún no tienes repetidas para regalar.${tradeState.req ? " Si tienes la app instalada, ábrela y escanea el código desde allí: Repetidas → Regalar una repetida." : ""}</p>`}
       ${out.length ? `<p class="note">Regalos que aún puedes volver a enseñar:</p><div class="btn-row" style="justify-content:center">${out.map((x, i) => `<button class="btn btn-ghost btn-small" data-out="${i}">${esc(BY_N.get(x.n).short)}</button>`).join("")}</div>` : ""}`;
     tradeState.out = out;
   }
   function askScanReq(n) {
     tradeState.give = n;
+    if (tradeState.req) return onScanReq(tradeState.req);
     tradeBody().innerHTML = `<h2>Regalar «${esc(BY_N.get(n).short)}»</h2><p class="install-sub">Escanea el código que aparece en el móvil de tu amigo (en Repetidas → Recibir un cromo).</p>
-      <div class="scan" id="scanBox"></div><label class="btn btn-ghost btn-small">🖼️ Usar una foto del código<input type="file" accept="image/*" id="scanFile" hidden></label>`;
+      <div class="scan" id="scanBox"></div><p class="scan-msg" id="scanMsg"></p><label class="btn btn-ghost btn-small">🖼️ Usar una foto del código<input type="file" accept="image/*" id="scanFile" hidden></label>`;
     startScan(onScanReq);
   }
   function onScanReq(txt) {
-    const m = /^SANTOS1R\.([A-Z0-9]{10})\.([A-Z0-9]{8})$/.exec(txt);
-    if (!m) return scanMsg("Ese no es un código para recibir cromos");
+    const m = RE_REQ.exec(txt);
+    if (!m) return scanMsg(RE_GIFT.test(txt) ? "Ese es el código de un regalo: lo tiene que escanear tu amigo" : "Ese no es un código para recibir cromos");
     const [, dev, nonce] = m;
     if (dev === S.dev) return scanMsg("Ese código es de tu propio móvil");
     S.usedReq = S.usedReq || [];
@@ -800,39 +805,42 @@
     showGift(code, n);
   }
   function showGift(code, n) {
-    tradeBody().innerHTML = `<h2>¡Listo para entregar!</h2><p class="install-sub">Que tu amigo escanee este código para recibir <b>${esc(BY_N.get(n).short)}</b>. Solo sirve para su móvil y una sola vez.</p>
+    tradeBody().innerHTML = `<h2>¡Listo para entregar!</h2><p class="install-sub">Ahora tu amigo escanea este código para recibir <b>${esc(BY_N.get(n).short)}</b> (en su app: «Escanear su código»). Solo sirve para su móvil y una sola vez.</p>
       <div class="qr-box">${qrSVG(code)}</div><button class="btn btn-primary btn-block" id="tDone">Hecho</button>`;
   }
   function askScanGift() {
-    tradeBody().innerHTML = `<h2>Escanea el código de tu amigo</h2><div class="scan" id="scanBox"></div>
+    tradeBody().innerHTML = `<h2>Escanea el código de tu amigo</h2><p class="install-sub">Es el que le aparece después de elegir el cromo que te regala.</p><div class="scan" id="scanBox"></div><p class="scan-msg" id="scanMsg"></p>
       <label class="btn btn-ghost btn-small">🖼️ Usar una foto del código<input type="file" accept="image/*" id="scanFile" hidden></label>`;
     startScan(onScanGift);
   }
   function onScanGift(txt) {
-    const m = /^(SANTOS1T\.(\d{1,3})\.([A-Z0-9]{10})\.([A-Z0-9]{8})\.([A-Z0-9]{10}))\.([A-Z0-9]+)$/.exec(txt);
-    if (!m) return scanMsg(/^SANTOS1R/.test(txt) ? "Ese es un código para recibir. Escanea el que aparece después de elegir el cromo" : "Ese no es un código de cromo");
+    const m = RE_GIFT.exec(txt);
+    if (!m) return scanMsg(RE_REQ.test(txt) ? "Ese es tu código para recibir: lo escanea tu amigo. Tú escanea el que le sale después de elegir el cromo" : "Ese no es un código de cromo");
     const [, base, ns, dev, nonce, , sig] = m, n = +ns;
     if (th(TSALT + base) !== sig || !BY_N.get(n)) return scanMsg("Ese código no es válido");
-    if (dev !== S.dev) return scanMsg("Ese código es para otro móvil");
+    const fromLink = !tradeState || !tradeState.cb;
+    const hint = fromLink ? " Si tienes la app instalada, ábrela y escanéalo desde allí: Repetidas → Recibir un cromo → Escanear su código." : "";
+    if (dev !== S.dev) return scanMsg("Ese código es para otro móvil." + hint);
     const i = (S.inbox || []).findIndex((x) => x.k === nonce);
-    if (i < 0) return scanMsg("Ese código ya se usó");
+    if (i < 0) return scanMsg("Ese código ya se usó." + hint);
     stopScan();
     S.inbox.splice(i, 1); S.received = (S.received || 0) + 1; save();
     closeTrade();
     startOpening("trade", [n], { [n]: "Regalo de un amigo" });
   }
-  function scanMsg(m) { toast(m); vibrate([30, 40, 30]); }
+  function scanMsg(m) { const el = $("#scanMsg"); if (el && $("#trade").classList.contains("open")) el.textContent = m; toast(m, m.length > 60 ? 6000 : 3000); vibrate([30, 40, 30]); }
   let jsqrP = null;
   const loadJsQR = () => jsqrP || (jsqrP = new Promise((ok, ko) => { const s = document.createElement("script"); s.src = "js/vendor/jsQR.js"; s.onload = ok; s.onerror = ko; document.head.appendChild(s); }));
   async function decodeFrom(src, w, h) { // src: video o imagen
-    if ("BarcodeDetector" in window) {
-      try { const r = await new BarcodeDetector({ formats: ["qr_code"] }).detect(src); if (r[0]) return r[0].rawValue; return null; } catch {}
+    if ("BarcodeDetector" in window && decodeFrom.bd !== false) {
+      try { decodeFrom.bd = decodeFrom.bd || new BarcodeDetector({ formats: ["qr_code"] }); const r = await decodeFrom.bd.detect(src); if (r[0]) return r[0].rawValue; } catch { decodeFrom.bd = false; }
     }
-    await loadJsQR();
-    const c = decodeFrom.c || (decodeFrom.c = document.createElement("canvas")), sc = Math.min(1, 800 / Math.max(w, h));
+    await loadJsQR(); // en algunos móviles el detector del sistema no ve nada: probamos también con jsQR
+    if (!w || !h) return null;
+    const c = decodeFrom.c || (decodeFrom.c = document.createElement("canvas")), sc = Math.min(1, 720 / Math.max(w, h));
     c.width = Math.round(w * sc); c.height = Math.round(h * sc);
     const ctx = c.getContext("2d", { willReadFrequently: true }); ctx.drawImage(src, 0, 0, c.width, c.height);
-    const r = window.jsQR(ctx.getImageData(0, 0, c.width, c.height).data, c.width, c.height);
+    const r = window.jsQR(ctx.getImageData(0, 0, c.width, c.height).data, c.width, c.height, { inversionAttempts: "dontInvert" });
     return r ? r.data : null;
   }
   async function startScan(cb) {
@@ -877,6 +885,20 @@
   welcome();
   maybeGift();
   const start = (location.hash || "").slice(1);
+  function handleLink(delay) { // enlaces de intercambio leídos con la cámara del móvil
+    let h = location.hash.slice(1); try { h = decodeURIComponent(h); } catch {}
+    const link = /^(dar|recibir)=(.+)$/.exec(h);
+    if (!link) return false;
+    try { history.replaceState(null, "", location.pathname + location.search); } catch {}
+    setTimeout(() => {
+      if (tradeState) closeTrade();
+      if (link[1] === "dar") { if (RE_REQ.test(link[2])) { go("mas"); openTrade("dar", link[2]); } }
+      else { go("mas"); onScanGift(link[2]); }
+    }, delay);
+    return true;
+  }
+  handleLink(700);
+  window.addEventListener("hashchange", () => handleLink(50));
   go(["hoy", "album", "sobres", "mas"].includes(start) ? start : "hoy");
   $("#opening").addEventListener("click", (e) => { if (e.target === $("#opening") && $("#summary").classList.contains("show")) closeOpening(); });
 
