@@ -472,12 +472,13 @@
     card.addEventListener("click", () => {
       clearTimeout(flipT);
       if (!card.classList.contains("flipped")) {
-        card.classList.add("flipped");
+        card.classList.add("flipped"); setTimeout(() => card.classList.add("hide-front"), 330);
         // al terminar el giro, el reverso queda plano (sin 3D) para poder desplazarlo con el dedo
         flipT = setTimeout(() => card.classList.add("flat"), 720);
       } else {
         card.classList.remove("flat");
         requestAnimationFrame(() => requestAnimationFrame(() => card.classList.remove("flipped")));
+        setTimeout(() => card.classList.remove("hide-front"), 330);
       }
       vibrate(10);
       $("#viewerHint").textContent = card.classList.contains("flipped") ? "Desliza para leer · toca para volver" : "Toca el cromo para darle la vuelta";
@@ -558,7 +559,7 @@
     const deal = $("#deal");
     deal.innerHTML = pack.cards.map((n, i) => cardHTML(n, { flippable: true, cover: true, lazy: false })).reverse().join("");
     const cards = $$(".card", deal).reverse(); // ahora cards[0] es el de arriba
-    cards.forEach((c, i) => { c.classList.add("flipped", "dealt"); c.style.animationDelay = i * 0.07 + "s"; if (i > 0) c.classList.add("under"); c.style.zIndex = 100 - i; });
+    cards.forEach((c, i) => { c.classList.add("flipped", "dealt", "hide-front"); c.style.animationDelay = i * 0.07 + "s"; if (i > 0) c.classList.add("under"); c.style.zIndex = 100 - i; });
     $("#reveal").classList.add("show"); $("#tag").innerHTML = ""; updateCounter();
   }
   function updateCounter() { $("#dealCounter").textContent = `${Math.min(dealIdx + 1, pack.cards.length)} de ${pack.cards.length} · toca para descubrir`; }
@@ -568,6 +569,7 @@
     const n = +c.dataset.n;
     if (c.classList.contains("flipped") && !c.dataset.revealed) { // boca abajo → mostrar
       c.dataset.revealed = "1"; c.classList.remove("flipped");
+      setTimeout(() => c.classList.remove("hide-front"), 300); // a mitad del giro: en iPhone el anverso se veía en espejo
       const s = BY_N.get(n);
       $("#tag").innerHTML = `${pack.isNew[n] ? '<span class="new">¡Nuevo!</span>' : '<span class="dup">Repetida</span>'}${s.p ? '<span class="prem">★ Premium</span>' : ""}${pack.why[n] ? `<span class="why">${esc(pack.why[n])}</span>` : ""}`;
       vibrate(s.p ? [40, 40, 80] : 25);
