@@ -40,6 +40,7 @@
     return new Date(y, month - 1, day, 12);
   }
   function advent1(y) { const d = new Date(y, 11, 3, 12); return addDays(d, -d.getDay()); } // domingo entre 27 nov y 3 dic
+  function nthSunday(y, m, k) { const d = new Date(y, m, 1, 12); return addDays(d, ((7 - d.getDay()) % 7) + 7 * (k - 1)); }
   function movable(y) {
     const E = easter(y);
     const jan6 = new Date(y, 0, 6, 12);
@@ -48,6 +49,9 @@
       2: [addDays(E, 68)], 3: [addDays(E, 7)], 4: [addDays(advent1(y), -7)], 5: [addDays(E, 60), addDays(E, 63)],
       9: [addDays(E, -4)], 10: [firstFriMar], 14: [addDays(E, -47)], 15: [addDays(E, 21)], 18: [E],
       19: [addDays(E, -2)], 20: [addDays(jan6, 7 - jan6.getDay() || 7)], 57: [addDays(E, 69)],
+      501: [addDays(E, -3)], 504: [addDays(E, -44), addDays(E, 49)], 505: [addDays(E, -6)], 507: [addDays(E, -5)],
+      508: [addDays(E, -2)], 509: [addDays(E, -2)], 510: [addDays(E, 39), addDays(E, 42)], 523: [addDays(E, 50)],
+      522: [nthSunday(y, 4, 2)], 530: [nthSunday(y, 4, 1)],
     };
   }
   const feastCache = {};
@@ -138,9 +142,13 @@
   const ownedCount = () => Object.keys(S.owned).filter((n) => S.owned[n] > 0).length;
   const dupCount = () => Object.values(S.owned).reduce((a, c) => a + Math.max(0, c - 1), 0);
 
-  const weight = (s) => (s.x ? 0 : s.p ? PREMIUM_WEIGHT : 1); // x: solo sale el día de su fiesta
+  const locked = (s) => s.x || (s.h && dkey(today()) < s.h); // x: solo sale el día de su fiesta
+  const weight = (s) => (locked(s) || s.e ? 0 : s.p ? PREMIUM_WEIGHT : 1);
+  const SPECIAL_CHANCE = 0.01; // cada cromo al azar tiene un 1 % de ser un cromo especial
+  const specials = () => SANTOS.filter((s) => s.e && !locked(s));
   const missingBoost = () => 0.4; // los cromos que faltan salen menos: más repetidas, álbum más largo
   function drawRandom(r = Math.random, only = null) {
+    if (!only && r() < SPECIAL_CHANCE) { const L = specials(); if (L.length) return L[Math.floor(r() * L.length)].n; }
     const boost = missingBoost();
     const list = only ? SANTOS.filter(only) : SANTOS;
     const w = (s) => weight(s) * (has(s.n) ? 1 : boost);
@@ -155,7 +163,7 @@
     const cards = [], why = {};
     const push = (n, reason) => { if (!cards.includes(n)) { cards.push(n); if (reason) why[n] = reason; } };
     if (kind === "welcome") push(1, "Bienvenida");
-    if (kind === "premium") push(drawRandom(Math.random, (s) => s.p && !s.x), "Premium seguro");
+    if (kind === "premium") push(drawRandom(Math.random, (s) => s.p && !s.e && !locked(s)), "Premium seguro");
     for (const n of saintsOfDay(d)) push(n, "Santo del día");
     for (const r of D.retos) {
       if (r.s && D.done.includes(r.id) && !D.granted.includes(r.s)) { push(r.s, "Por tu reto"); D.granted.push(r.s); }
@@ -174,6 +182,8 @@
   /* ───────── Cromos (HTML) ───────── */
   const ROMAN = [[1000, "M"], [900, "CM"], [500, "D"], [400, "CD"], [100, "C"], [90, "XC"], [50, "L"], [40, "XL"], [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]];
   const roman = (n) => ROMAN.reduce((s, [v, r]) => { while (n >= v) { s += r; n -= v; } return s; }, "");
+  const lab = (n) => BY_N.get(n).l || roman(n); // los especiales llevan letra
+  const secC = (id) => (SEC.get(id) || {}).c || id; // la segunda parte usa los colores de su sección
 
   const ICONS = {
     jesus: '<path d="M50 10v80M28 34h44" stroke-width="7" stroke-linecap="round"/><circle cx="50" cy="34" r="26" stroke-width="2" opacity=".5"/><path d="M50 4v-2M50 66v2M16 34h-2M86 34h-2M26 10l-2-2M74 10l2-2M26 58l-2 2M74 58l2 2" stroke-width="3" stroke-linecap="round" opacity=".7"/>',
@@ -188,6 +198,7 @@
     confesores: '<path d="M50 88c-16 0-26-10-26-24 0-16 14-22 16-40 8 6 10 14 10 20 4-6 6-14 4-26 14 10 22 26 22 44 0 16-10 26-26 26z" stroke-width="3.5" stroke-linejoin="round"/><path d="M50 88c-6 0-10-4-10-10 0-8 6-12 10-20 4 8 10 12 10 20 0 6-4 10-10 10z" stroke-width="3" stroke-linejoin="round"/>',
     virgenes: '<path d="M50 92V44" stroke-width="4" stroke-linecap="round"/><path d="M50 44c-4-10-2-24 0-32 2 8 4 22 0 32zM50 44c-10-2-20-10-24-22 10 2 20 10 24 22zM50 44c10-2 20-10 24-22-10 2-20 10-24 22z" stroke-width="3" stroke-linejoin="round"/><path d="M50 70c-8-2-14-8-16-14 8 0 14 6 16 14zM50 76c8-2 14-8 16-14-8 0-14 6-16 14z" stroke-width="2.6" stroke-linejoin="round"/>',
     casados: '<circle cx="38" cy="56" r="20" stroke-width="5"/><circle cx="62" cy="56" r="20" stroke-width="5"/><path d="M50 14v16M42 22h16" stroke-width="4" stroke-linecap="round"/>',
+    especiales: '<path d="M50 8l12 26 28 4-20 20 5 28-25-13-25 13 5-28-20-20 28-4z" stroke-width="3.5" stroke-linejoin="round"/><circle cx="50" cy="50" r="9" stroke-width="3"/>',
     jovenes: '<path d="M50 10l9 26h28l-22 16 8 26-23-16-23 16 8-26-22-16h28z" stroke-width="3.5" stroke-linejoin="round"/><circle cx="50" cy="48" r="6" fill="currentColor" stroke="none"/>',
   };
   const ICON_COVER = '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor"><path d="M50 4l40 46-40 46-40-46z" stroke-width="2.4"/><path d="M50 18l28 32-28 32-28-32z" stroke-width="1.4" opacity=".6"/><path d="M50 30v40M38 44h24" stroke-width="5" stroke-linecap="round"/></svg>';
@@ -197,23 +208,23 @@
 
   function cardHTML(n, { flippable = false, cover = false, sway = false, lazy = true } = {}) {
     const s = BY_N.get(n);
-    const r = roman(n);
+    const r = lab(n);
     const len = s.short.length;
     const cls = len > 30 ? "xl" : len > 19 ? "l" : "";
     const src = imgSrc(n);
     const art = src
       ? `<img src="${src}" alt="" ${lazy ? 'loading="lazy"' : ""} decoding="async" onerror="this.remove()">`
-      : `<div class="ph-lines"></div><div class="ph-lines b"></div><svg class="ph" viewBox="0 0 100 100" fill="none" stroke="currentColor">${ICONS[s.s]}</svg>`;
+      : `<div class="ph-lines"></div><div class="ph-lines b"></div><svg class="ph" viewBox="0 0 100 100" fill="none" stroke="currentColor">${ICONS[secC(s.s)]}</svg>`;
     const front = `<div class="face front"><div class="bg"></div><div class="art ${src ? "full" : ""}">${art}</div><div class="frame"></div>
       <div class="numero"><i class="side"></i><span class="gem ${r.length <= 2 ? "short" : ""}">${r}</span><i class="side"></i></div>
-      <div class="plate"><span class="${cls}">-${esc(s.short)}-</span></div><div class="holo"></div><div class="shine"></div></div>`;
+      <div class="plate"><span class="${cls}">-${esc(s.short)}-</span></div><div class="holo"></div><div class="shine"></div>${s.e ? '<i class="esp-rib">ESPECIAL</i>' : ""}</div>`;
     const back = flippable ? `<div class="face back"><div class="b-in">
-      <div class="b-num">N.º ${n} · ${r}</div><div class="b-name">${esc(s.name)}</div>
-      <span class="b-sec">${esc(SEC.get(s.s).name)}${s.p ? " · ★ Premium" : ""}</span>
+      <div class="b-num">${s.e ? `Cromo especial · ${r}` : `N.º ${n} · ${r}`}</div><div class="b-name">${esc(s.name)}</div>
+      <span class="b-sec">${esc(SEC.get(s.s).name)}${s.p && !s.e ? " · ★ Premium" : ""}</span>
       <p class="b-dates">${esc(s.dates)}</p><p class="b-bio">${esc(s.bio)}</p>
       <div class="b-feast"><b>Fecha litúrgica</b>${esc(s.feast)}</div></div></div>` : "";
     const cov = cover ? `<div class="cover">${ICON_COVER}</div>` : "";
-    return `<div class="card s-${s.s} ${s.p ? "premium" : ""} ${sway ? "sway" : ""}" data-n="${n}"><div class="card-3d">${front}${back}${cov}</div></div>`;
+    return `<div class="card s-${secC(s.s)} ${s.p ? "premium" : ""} ${s.e ? "especial" : ""} ${sway ? "sway" : ""}" data-n="${n}"><div class="card-3d">${front}${back}${cov}</div></div>`;
   }
 
   /* Inclinación 3D con el dedo / ratón / giroscopio */
@@ -428,13 +439,13 @@
       const list = SANTOS.filter((s) => s.s === sec.id && matches(s));
       if (!list.length) continue;
       const got = SANTOS.filter((s) => s.s === sec.id && has(s.n)).length, tot = sec.to - sec.from + 1;
-      html += `<section class="page" id="sec-${sec.id}"><div class="page-head"><h3>${esc(sec.name)}</h3><span>${got}/${tot} · n.º ${sec.from}–${sec.to}</span></div><div class="grid">`;
+      html += `<section class="page" id="sec-${sec.id}"><div class="page-head"><h3>${esc(sec.name)}</h3><span>${got}/${tot} · ${sec.id === "especiales" ? "cromos A–S" : `n.º ${sec.from}–${sec.to}`}</span></div><div class="grid">`;
       for (const s of list) {
         if (has(s.n)) {
           visibleOrder.push(s.n);
           html += `<div class="slot has" data-n="${s.n}">${cardHTML(s.n)}${S.owned[s.n] > 1 ? `<span class="count">×${S.owned[s.n]}</span>` : ""}</div>`;
         } else {
-          html += `<div class="slot empty ${s.p ? "premium-slot" : ""}"><span class="num">${s.n}</span><span class="nm">${esc(s.short)}</span></div>`;
+          html += `<div class="slot empty ${s.p ? "premium-slot" : ""}"><span class="num">${s.l || s.n}</span><span class="nm">${esc(s.short)}</span></div>`;
         }
       }
       html += `</div></section>`;
@@ -471,7 +482,7 @@
       vibrate(10);
       $("#viewerHint").textContent = card.classList.contains("flipped") ? "Desliza para leer · toca para volver" : "Toca el cromo para darle la vuelta";
     });
-    $("#vOwned").textContent = `${n} · tienes ${S.owned[n] || 0}`;
+    $("#vOwned").textContent = `${BY_N.get(n).l || n} · tienes ${S.owned[n] || 0}`;
     $("#vPrev").style.visibility = vList.length > 1 ? "visible" : "hidden"; $("#vNext").style.visibility = vList.length > 1 ? "visible" : "hidden";
     $("#viewerHint").textContent = "Toca el cromo para darle la vuelta";
   }
@@ -486,8 +497,8 @@
 
   /* ───────── Vista SOBRES ───────── */
   const packHTML = (kind = "normal") => {
-    const label = kind === "premium" ? "Sobre premium" : kind === "reto" ? "Cromo del reto" : kind === "swap" ? "Canje" : "Sobre de cromos";
-    return `<div class="pack ${kind === "premium" ? "gold" : kind === "reto" || kind === "swap" ? "mini-pack" : ""}"><div class="crimp t"></div><div class="crimp b"></div><div class="pk-in">${ICON_COVER}<b>Álbum de los Santos</b><small>${label}</small></div></div>`;
+    const label = { premium: "Sobre premium", reto: "Cromo del reto", swap: "Canje", gift: "Regalo", trade: "De un amigo" }[kind] || "Sobre de cromos";
+    return `<div class="pack ${kind === "premium" ? "gold" : kind === "gift" || kind === "trade" ? "gold mini-pack" : kind === "reto" || kind === "swap" ? "mini-pack" : ""}"><div class="crimp t"></div><div class="crimp b"></div><div class="pk-in">${ICON_COVER}<b>Álbum de los Santos</b><small>${label}</small></div></div>`;
   };
   const PACK_HTML = packHTML();
   function renderSobres() {
@@ -532,7 +543,7 @@
     save(); updateChrome();
     dealIdx = 0; opening = true;
     const ov = $("#opening");
-    $("#bigPack").innerHTML = packHTML(kind); $("#bigPack").className = "big-pack" + (kind === "reto" ? " small" : ""); $("#bigPack").style.display = "";
+    $("#bigPack").innerHTML = packHTML(kind); $("#bigPack").className = "big-pack" + (forced && forced.length === 1 && kind !== "swap" ? " small" : ""); $("#bigPack").style.display = "";
     $("#tapHint").style.display = ""; $("#tapHint").textContent = forced ? "Toca para descubrir tu cromo" : "Toca el sobre para abrirlo";
     $("#reveal").classList.remove("show"); $("#summary").classList.remove("show"); ov.classList.remove("lit");
     ov.classList.add("open"); document.body.style.overflow = "hidden";
@@ -596,9 +607,12 @@
       <button class="btn btn-primary btn-block" id="swapCards" ${dc >= SWAP_COST && own < TOTAL ? "" : "disabled"}>Cambiar ${SWAP_COST} repetidas por 1 nuevo</button>
       ${dups.length ? `<div class="dups">${dups.map((s) => `<div class="slot has" data-n="${s.n}">${cardHTML(s.n)}<span class="count">×${S.owned[s.n]}</span></div>`).join("")}</div>` : `<p class="note">Aún no tienes repetidas.</p>`}</div>`;
 
+    html += `<div class="panel"><h3>Intercambia con tus amigos</h3><p>Pasa tus repetidas de un móvil a otro con un código QR. Cada código sirve una sola vez.</p>
+      <div class="btn-row"><button class="btn btn-primary btn-small" id="tradeGive" ${dups.length ? "" : "disabled"}>📤 Regalar una repetida</button><button class="btn btn-dark btn-small" id="tradeGet">📥 Recibir un cromo</button></div></div>`;
+
     html += `<div class="panel"><h3>Tu avance por secciones</h3><div class="sec-progress">${SECTIONS.map((sec) => {
       const tot = sec.to - sec.from + 1, got = SANTOS.filter((s) => s.s === sec.id && has(s.n)).length;
-      return `<div class="r"><span>${esc(sec.name)}</span><span>${got}/${tot}</span><div class="bar s-${sec.id}"><i style="width:${(got / tot) * 100}%;background:var(--c1)"></i></div></div>`;
+      return `<div class="r"><span>${esc(sec.name)}</span><span>${got}/${tot}</span><div class="bar s-${secC(sec.id)}"><i style="width:${(got / tot) * 100}%;background:var(--c1)"></i></div></div>`;
     }).join("")}</div></div>`;
 
     html += `<div class="panel"><h3>Instálala en tu móvil</h3><p>En Android (Chrome): menú ⋮ → «Instalar aplicación». En iPhone (Safari): botón Compartir → «Añadir a pantalla de inicio». Funciona sin conexión.</p>
@@ -613,6 +627,8 @@
   $("#view-mas").addEventListener("click", (e) => {
     const sl = e.target.closest(".slot.has"); if (sl) return openViewer(+sl.dataset.n, $$(".dups .slot").map((x) => +x.dataset.n));
     if (e.target.closest("#swapCards")) return doSwap();
+    if (e.target.closest("#tradeGive")) return openTrade("dar");
+    if (e.target.closest("#tradeGet")) return openTrade("recibir");
     if (e.target.closest("#exportBtn")) {
       const blob = new Blob([JSON.stringify({ app: "album-santos", v: 1, date: new Date().toISOString(), state: S })], { type: "application/json" });
       const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `album-santos-${dkey(today())}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
@@ -631,7 +647,7 @@
   });
   function doSwap() {
     if (dupCount() < SWAP_COST) return;
-    const missing = SANTOS.filter((s) => !has(s.n) && !s.x); if (!missing.length) return toast("Los cromos que te faltan solo salen en su fiesta");
+    const missing = SANTOS.filter((s) => !has(s.n) && !locked(s) && !s.e); if (!missing.length) return toast("Los cromos que te faltan no se pueden conseguir por canje");
     // quitamos repetidas empezando por las que más se repiten
     let left = SWAP_COST;
     while (left > 0) {
@@ -693,20 +709,177 @@
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && dkey(today()) !== lastKey) { lastKey = dkey(today()); go(current); } });
 
   /* ───────── Novedades (se muestran una vez a quien ya usaba la app) ───────── */
-  const NEWS_V = 1;
+  const NEWS_V = 2;
   function maybeNews() {
     if (!S.welcome || (S.news || 0) >= NEWS_V) { S.news = NEWS_V; save(); return; }
     setTimeout(() => { if (!$("#install").classList.contains("open")) $("#news").classList.add("open"); else maybeNews._wait = true; }, 900);
   }
   $("#news").addEventListener("click", (e) => { if (e.target.closest("#newsOk") || e.target === $("#news")) { $("#news").classList.remove("open"); S.news = NEWS_V; save(); } });
 
+  /* ───────── Regalo de promoción: Nuestra Señora de la Natividad (especial E) ───────── */
+  const PROMO = (SANTOS.find((s) => s.l === "E") || {}).n;
+  function maybeGift() {
+    if (!PROMO || S.promoE) return;
+    const busy = () => opening || ["#install", "#news", "#trade"].some((id) => $(id).classList.contains("open"));
+    const tryIt = () => {
+      if (S.promoE) return;
+      if (busy()) return setTimeout(tryIt, 1200);
+      S.promoE = 1;
+      startOpening("gift", [PROMO], { [PROMO]: "¡Regalo de la app!" });
+      $("#tapHint").textContent = "Tienes un regalo: toca para abrirlo";
+    };
+    setTimeout(tryIt, 2600);
+  }
+
+  /* ───────── Intercambio de repetidas con QR (dos escaneos, sin servidor) ─────────
+     1. Quien RECIBE muestra su código (su móvil + una clave de un solo uso).
+     2. Quien DA elige una repetida y escanea ese código: el cromo sale de su álbum
+        y aparece un código que solo sirve para ese móvil y esa clave.
+     3. Quien RECIBE lo escanea: la clave se gasta, así que el código no vale otra vez. */
+  const rid = (k) => Array.from(crypto.getRandomValues(new Uint8Array(k)), (b) => "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[b % 32]).join("");
+  if (!S.dev) { S.dev = rid(10); save(); }
+  const TSALT = "santos·trueque·2026";
+  function th(str) { // huella corta (cyrb53)
+    let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+    for (let i = 0; i < str.length; i++) { const c = str.charCodeAt(i); h1 = Math.imul(h1 ^ c, 2654435761); h2 = Math.imul(h2 ^ c, 1597334677); }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36).toUpperCase();
+  }
+  const reqCode = (nonce) => `SANTOS1R.${S.dev}.${nonce}`;
+  const giftCode = (n, dev, nonce) => { const b = `SANTOS1T.${n}.${dev}.${nonce}.${S.dev}`; return `${b}.${th(TSALT + b)}`; };
+  function qrSVG(text) {
+    const q = qrcode(0, "M"); q.addData(text); q.make();
+    return q.createSvgTag({ cellSize: 6, margin: 2, scalable: true });
+  }
+  let tradeState = null, scanStop = null;
+  const tradeBody = () => $("#tradeBody");
+  function openTrade(mode) {
+    tradeState = { mode };
+    $("#trade").classList.add("open"); document.body.style.overflow = "hidden";
+    if (mode === "recibir") showRequest(); else pickDup();
+  }
+  function closeTrade() { stopScan(); $("#trade").classList.remove("open"); document.body.style.overflow = ""; tradeState = null; if (current === "mas") renderMas(); }
+  function showRequest() {
+    S.inbox = (S.inbox || []).filter((x) => Date.now() - x.t < 30 * 864e5).slice(-20);
+    let mine = S.inbox[S.inbox.length - 1];
+    if (!mine || Date.now() - mine.t > 864e5) { mine = { k: rid(8), t: Date.now() }; S.inbox.push(mine); save(); }
+    tradeBody().innerHTML = `<h2>Recibir un cromo</h2><ol class="install-steps"><li>Enséñale este código a tu amigo</li><li>Él lo escanea y elige la repetida que te regala</li><li>Después escanea tú el código que aparece en su móvil</li></ol>
+      <div class="qr-box">${qrSVG(reqCode(mine.k))}</div>
+      <button class="btn btn-primary btn-block" id="tScanGift">📷 Escanear su código</button>`;
+  }
+  function pickDup() {
+    const dups = SANTOS.filter((s) => (S.owned[s.n] || 0) > 1);
+    const out = (S.outbox || []).filter((x) => Date.now() - x.t < 7 * 864e5);
+    tradeBody().innerHTML = `<h2>Regalar una repetida</h2>
+      ${dups.length ? `<p class="install-sub">Elige el cromo que quieres pasar. Se quitará una copia de tu álbum.</p><div class="dups trade-dups">${dups.map((s) => `<div class="slot has" data-give="${s.n}">${cardHTML(s.n)}<span class="count">×${S.owned[s.n]}</span></div>`).join("")}</div>`
+        : `<p class="install-sub">Aún no tienes repetidas para regalar.</p>`}
+      ${out.length ? `<p class="note">Regalos que aún puedes volver a enseñar:</p><div class="btn-row" style="justify-content:center">${out.map((x, i) => `<button class="btn btn-ghost btn-small" data-out="${i}">${esc(BY_N.get(x.n).short)}</button>`).join("")}</div>` : ""}`;
+    tradeState.out = out;
+  }
+  function askScanReq(n) {
+    tradeState.give = n;
+    tradeBody().innerHTML = `<h2>Regalar «${esc(BY_N.get(n).short)}»</h2><p class="install-sub">Escanea el código que aparece en el móvil de tu amigo (en Repetidas → Recibir un cromo).</p>
+      <div class="scan" id="scanBox"></div><label class="btn btn-ghost btn-small">🖼️ Usar una foto del código<input type="file" accept="image/*" id="scanFile" hidden></label>`;
+    startScan(onScanReq);
+  }
+  function onScanReq(txt) {
+    const m = /^SANTOS1R\.([A-Z0-9]{10})\.([A-Z0-9]{8})$/.exec(txt);
+    if (!m) return scanMsg("Ese no es un código para recibir cromos");
+    const [, dev, nonce] = m;
+    if (dev === S.dev) return scanMsg("Ese código es de tu propio móvil");
+    S.usedReq = S.usedReq || [];
+    if (S.usedReq.includes(dev + nonce)) return scanMsg("Ya le pasaste un cromo con ese código. Pídele que abra uno nuevo");
+    const n = tradeState.give;
+    if ((S.owned[n] || 0) < 2) { stopScan(); return pickDup(); }
+    stopScan();
+    S.owned[n]--; S.usedReq.push(dev + nonce); S.usedReq = S.usedReq.slice(-200);
+    const code = giftCode(n, dev, nonce);
+    S.outbox = [...(S.outbox || []), { n, c: code, t: Date.now() }].slice(-20);
+    S.given = (S.given || 0) + 1; save(); updateChrome(); vibrate(30);
+    showGift(code, n);
+  }
+  function showGift(code, n) {
+    tradeBody().innerHTML = `<h2>¡Listo para entregar!</h2><p class="install-sub">Que tu amigo escanee este código para recibir <b>${esc(BY_N.get(n).short)}</b>. Solo sirve para su móvil y una sola vez.</p>
+      <div class="qr-box">${qrSVG(code)}</div><button class="btn btn-primary btn-block" id="tDone">Hecho</button>`;
+  }
+  function askScanGift() {
+    tradeBody().innerHTML = `<h2>Escanea el código de tu amigo</h2><div class="scan" id="scanBox"></div>
+      <label class="btn btn-ghost btn-small">🖼️ Usar una foto del código<input type="file" accept="image/*" id="scanFile" hidden></label>`;
+    startScan(onScanGift);
+  }
+  function onScanGift(txt) {
+    const m = /^(SANTOS1T\.(\d{1,3})\.([A-Z0-9]{10})\.([A-Z0-9]{8})\.([A-Z0-9]{10}))\.([A-Z0-9]+)$/.exec(txt);
+    if (!m) return scanMsg(/^SANTOS1R/.test(txt) ? "Ese es un código para recibir. Escanea el que aparece después de elegir el cromo" : "Ese no es un código de cromo");
+    const [, base, ns, dev, nonce, , sig] = m, n = +ns;
+    if (th(TSALT + base) !== sig || !BY_N.get(n)) return scanMsg("Ese código no es válido");
+    if (dev !== S.dev) return scanMsg("Ese código es para otro móvil");
+    const i = (S.inbox || []).findIndex((x) => x.k === nonce);
+    if (i < 0) return scanMsg("Ese código ya se usó");
+    stopScan();
+    S.inbox.splice(i, 1); S.received = (S.received || 0) + 1; save();
+    closeTrade();
+    startOpening("trade", [n], { [n]: "Regalo de un amigo" });
+  }
+  function scanMsg(m) { toast(m); vibrate([30, 40, 30]); }
+  let jsqrP = null;
+  const loadJsQR = () => jsqrP || (jsqrP = new Promise((ok, ko) => { const s = document.createElement("script"); s.src = "js/vendor/jsQR.js"; s.onload = ok; s.onerror = ko; document.head.appendChild(s); }));
+  async function decodeFrom(src, w, h) { // src: video o imagen
+    if ("BarcodeDetector" in window) {
+      try { const r = await new BarcodeDetector({ formats: ["qr_code"] }).detect(src); if (r[0]) return r[0].rawValue; return null; } catch {}
+    }
+    await loadJsQR();
+    const c = decodeFrom.c || (decodeFrom.c = document.createElement("canvas")), sc = Math.min(1, 800 / Math.max(w, h));
+    c.width = Math.round(w * sc); c.height = Math.round(h * sc);
+    const ctx = c.getContext("2d", { willReadFrequently: true }); ctx.drawImage(src, 0, 0, c.width, c.height);
+    const r = window.jsQR(ctx.getImageData(0, 0, c.width, c.height).data, c.width, c.height);
+    return r ? r.data : null;
+  }
+  async function startScan(cb) {
+    stopScan(); tradeState.cb = cb;
+    const box = $("#scanBox");
+    let alive = true, stream = null, last = "";
+    scanStop = () => { alive = false; if (stream) stream.getTracks().forEach((t) => t.stop()); scanStop = null; };
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+      if (!alive) return stream.getTracks().forEach((t) => t.stop());
+      box.innerHTML = `<video playsinline muted autoplay></video><i class="aim"></i>`;
+      const v = $("video", box); v.srcObject = stream; await v.play().catch(() => {});
+      const tick = async () => {
+        if (!alive) return;
+        if (v.readyState >= 2) {
+          const txt = await decodeFrom(v, v.videoWidth, v.videoHeight).catch(() => null);
+          if (txt && txt !== last) { last = txt; setTimeout(() => { last = ""; }, 2500); cb(txt); }
+        }
+        if (alive) setTimeout(tick, 220);
+      };
+      tick();
+    } catch {
+      box.innerHTML = `<p class="note">No se pudo abrir la cámara. Dale permiso en el navegador, o usa una foto del código.</p>`;
+    }
+  }
+  function stopScan() { if (scanStop) scanStop(); }
+  $("#trade").addEventListener("click", (e) => {
+    if (e.target.closest("#tradeClose") || e.target === $("#trade") || e.target.closest("#tDone")) return closeTrade();
+    if (e.target.closest("#tScanGift")) return askScanGift();
+    const g = e.target.closest("[data-give]"); if (g) return askScanReq(+g.dataset.give);
+    const o = e.target.closest("[data-out]"); if (o) { const x = tradeState.out[+o.dataset.out]; return showGift(x.c, x.n); }
+  });
+  $("#trade").addEventListener("change", (e) => {
+    if (e.target.id !== "scanFile" || !e.target.files[0] || !tradeState) return;
+    const img = new Image(), url = URL.createObjectURL(e.target.files[0]);
+    img.onload = async () => { const txt = await decodeFrom(img, img.naturalWidth, img.naturalHeight).catch(() => null); URL.revokeObjectURL(url); if (txt) tradeState.cb(txt); else scanMsg("No encontré ningún código en esa foto"); };
+    img.src = url;
+  });
+
   /* ───────── Arranque ───────── */
   maybeNews();
   welcome();
+  maybeGift();
   const start = (location.hash || "").slice(1);
   go(["hoy", "album", "sobres", "mas"].includes(start) ? start : "hoy");
   $("#opening").addEventListener("click", (e) => { if (e.target === $("#opening") && $("#summary").classList.contains("show")) closeOpening(); });
 
   // Para pruebas desde la consola: window.__album
-  window.__album = { S, saintsOfDay, bigFeast, buildPack, easter };
+  window.__album = { S, saintsOfDay, bigFeast, buildPack, easter, drawRandom, giftCode, reqCode, onScanGift: (t) => onScanGift(t), onScanReq: (t) => onScanReq(t), openTrade };
 })();

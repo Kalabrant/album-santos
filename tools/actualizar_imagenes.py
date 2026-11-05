@@ -1,6 +1,6 @@
 """Prepara las imágenes de los santos para la app.
 
-Uso:  python tools/actualizar_imagenes.py  CARPETA_CON_LAS_IMAGENES
+Uso:  python tools/actualizar_imagenes.py  CARPETA_CON_LAS_IMAGENES  [CARPETA_ESPECIALES]
 
 - Acepta archivos .jpg/.jpeg/.png/.webp nombrados con el número ("001.jpg",
   "1 - San Pedro.jpg") o con el título del santo ("San Pedro Apóstol.jpg").
@@ -29,17 +29,19 @@ def load_santos():
 def main():
     santos = load_santos()
     by_name = {}
+    by_letter = {s["l"]: s["n"] for s in santos if s.get("l")}
     for s in santos:
         for k in (s["name"], s["short"], re.sub(r"\(.*?\)", "", s["name"])):
             by_name.setdefault(norm(k), s["n"])
     OUT.mkdir(parents=True, exist_ok=True)
-    src = Path(sys.argv[1]) if len(sys.argv) > 1 else OUT
+    srcs = [Path(a) for a in sys.argv[1:]] or [OUT]
     done, unknown = {}, []
-    for f in sorted(src.iterdir()):
+    for f in sorted(x for src in srcs for x in src.iterdir()):
         if f.suffix.lower() not in (".jpg", ".jpeg", ".png", ".webp"):
             continue
         m = re.match(r"^\s*(\d{1,3})(?!\d)", f.stem)
-        n = int(m.group(1)) if m and 1 <= int(m.group(1)) <= 500 else by_name.get(norm(f.stem))
+        le = re.match(r"^([A-Z])\.\s", f.stem)  # cromos especiales: "A. ...", "B. ..."
+        n = int(m.group(1)) if m and 1 <= int(m.group(1)) <= 700 else by_letter.get(le.group(1)) if le else by_name.get(norm(f.stem))
         if not n:
             key = norm(f.stem)
             n = next((v for k, v in by_name.items() if key and (key in k or k in key)), None)
