@@ -1,10 +1,10 @@
 /* Service worker: la app funciona sin conexión.
    Sube VERSION cada vez que cambies archivos de la app. */
-const VERSION = "v19";
+const VERSION = "v20";
 const SHELL = `santos-shell-${VERSION}`;
 const IMGS = `santos-img-${VERSION}`;
 const FILES = [
-  "./", "index.html", "css/app.css", "js/app.js", "js/vendor/qrcode.js", "js/vendor/jsQR.js", "data/santos.js", "data/retos.js", "data/imagenes.js",
+  "./", "index.html", "css/app.css", "js/app.js", "admin.html", "js/admin.js", "js/vendor/qrcode.js", "js/vendor/jsQR.js", "data/santos.js", "data/retos.js", "data/imagenes.js",
   "manifest.webmanifest", "assets/brush.png", "icons/icon-192.png", "icons/icon-512.png",
   "fonts/outfit-latin.woff2", "fonts/outfit-latin-ext.woff2", "fonts/grenze-latin.woff2", "fonts/grenze-latin-ext.woff2",
 ];

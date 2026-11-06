@@ -831,7 +831,29 @@
       <label class="btn btn-ghost btn-small">🖼️ Usar una foto del código<input type="file" accept="image/*" id="scanFile" hidden></label>`;
     startScan(onScanGift);
   }
+  // Regalos del administrador: firmados con una llave que solo tiene él (aquí solo está la llave pública)
+  const ADMIN_PUB = { kty: "EC", crv: "P-256", x: "1_tN5eUWljZUn9Onnpbe1Tc9kjrT9FkiRN51gBroiPg", y: "8y0wt8b9Eijch7_UQwdZvFNhHj4AhobyaMTvb3Fid9Q" };
+  const RE_ADMIN = /(SANTOS1A\.(\d{1,3})\.([A-Z0-9]{10})\.([A-Z0-9]{8}))\.([A-Za-z0-9_-]{80,90})/;
+  const b64u = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+  async function adminOk(base, sig) {
+    try {
+      const k = await crypto.subtle.importKey("jwk", ADMIN_PUB, { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
+      return await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, k, b64u(sig), new TextEncoder().encode(base));
+    } catch { return false; }
+  }
+  async function onAdminGift([, base, ns, dev, nonce, sig]) {
+    const n = +ns;
+    if (!BY_N.get(n) || !(await adminOk(base, sig))) return scanMsg("Ese código no es válido");
+    if (dev !== S.dev) return scanMsg("Ese código es para otro móvil.");
+    const i = (S.inbox || []).findIndex((x) => x.k === nonce);
+    if (i < 0) return scanMsg("Ese código ya se usó.");
+    stopScan();
+    S.inbox.splice(i, 1); S.received = (S.received || 0) + 1; save();
+    closeTrade();
+    startOpening("trade", [n], { [n]: "¡Regalo especial!" });
+  }
   function onScanGift(txt) {
+    const ad = RE_ADMIN.exec(txt); if (ad) return onAdminGift(ad);
     const m = RE_GIFT.exec(txt);
     if (!m) return scanMsg(RE_REQ.test(txt) ? "Ese es tu código para recibir: lo escanea tu amigo. Tú escanea el que le sale después de elegir el cromo" : "Ese no es un código de cromo");
     const [, base, ns, dev, nonce, , sig] = m, n = +ns;

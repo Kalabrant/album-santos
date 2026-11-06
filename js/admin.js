@@ -1,0 +1,100 @@
+/* Página del administrador: regala cualquier cromo en persona.
+   Solo funciona en el móvil que tenga guardada la llave privada (nunca está en el repositorio). */
+(() => {
+  "use strict";
+  const $ = (s, el = document) => el.querySelector(s);
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const { santos: SANTOS } = window.ALBUM;
+  const BY_N = new Map(SANTOS.map((s) => [s.n, s]));
+  const IMGS = window.IMAGENES || {}, IMG_V = window.IMAGENES_V || 1;
+  const KEY = "album-santos-admin-key", LOG = "album-santos-admin-log";
+  const PUB = { kty: "EC", crv: "P-256", x: "1_tN5eUWljZUn9Onnpbe1Tc9kjrT9FkiRN51gBroiPg", y: "8y0wt8b9Eijch7_UQwdZvFNhHj4AhobyaMTvb3Fid9Q" };
+  const APP_URL = location.origin + location.pathname.replace(/admin\.html$/, "");
+  const RE_REQ = /SANTOS1R\.([A-Z0-9]{10})\.([A-Z0-9]{8})/;
+  const b64u = (u8) => btoa(String.fromCharCode(...u8)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const toast = (m, ms = 3000) => { const t = $("#toast"); t.textContent = m; t.classList.add("show"); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), ms); };
+
+  // La llave llega una sola vez por el enlace …/admin.html#k=… y se guarda en este móvil
+  const hk = /[#&]k=([A-Za-z0-9_-]{40,50})/.exec(location.hash);
+  if (hk) { try { localStorage.setItem(KEY, hk[1]); } catch {} history.replaceState(null, "", location.pathname); }
+  let d = null; try { d = localStorage.getItem(KEY); } catch {}
+  if (!d) { $("#adm").innerHTML = `<div class="locked"><div style="font-size:48px">🔒</div><p>Esta página es solo para el administrador del álbum.</p></div>`; return; }
+  let keyP = crypto.subtle.importKey("jwk", { ...PUB, d, ext: true }, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+  async function sign(text) { const k = await keyP; return b64u(new Uint8Array(await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, k, new TextEncoder().encode(text)))); }
+
+  const lab = (s) => s.l || s.n;
+  const img = (n) => IMGS[n] ? `img/santos/${String(n).padStart(3, "0")}.${IMGS[n]}?v=${IMG_V}` : "icons/icon-192.png";
+  let q = "";
+  function render() {
+    const norm = (t) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+    const list = SANTOS.filter((s) => !q || String(s.n) === q || (s.l && s.l.toLowerCase() === q.toLowerCase()) || norm(s.name + " " + s.short).includes(norm(q)));
+    $("#grid").innerHTML = list.map((s) => `<div class="adm-c ${s.e ? "esp" : ""}" data-n="${s.n}"><img loading="lazy" src="${img(s.n)}" alt=""><b>${esc(lab(s))}</b><span>${esc(s.short)}</span></div>`).join("") || `<p class="sub">Nada con esa búsqueda.</p>`;
+  }
+  let log = []; try { log = JSON.parse(localStorage.getItem(LOG) || "[]"); } catch {}
+  $("#adm").innerHTML = `<h1>Regalar cromos</h1><p class="sub">Elige cualquier cromo. Luego escanea el código de la persona (en su app: Repetidas → Recibir un cromo) y enséñale el código que aparece.</p>
+    <label class="search"><input id="q" type="search" placeholder="Busca por nombre, número o letra" autocomplete="off"></label><div class="adm-grid" id="grid"></div>
+    <p class="log" id="log"></p>`;
+  const renderLog = () => { $("#log").textContent = log.length ? `Has regalado ${log.length} ${log.length === 1 ? "cromo" : "cromos"} desde este móvil.` : ""; };
+  render(); renderLog();
+  $("#q").addEventListener("input", (e) => { q = e.target.value.trim(); render(); });
+
+  /* ── Escáner ── */
+  let stopper = null, pick = null;
+  let jsqrP = null;
+  const loadJsQR = () => jsqrP || (jsqrP = new Promise((ok, ko) => { const s = document.createElement("script"); s.src = "js/vendor/jsQR.js"; s.onload = ok; s.onerror = ko; document.head.appendChild(s); }));
+  async function decodeFrom(src, w, h) {
+    if ("BarcodeDetector" in window && decodeFrom.bd !== false) {
+      try { decodeFrom.bd = decodeFrom.bd || new BarcodeDetector({ formats: ["qr_code"] }); const r = await decodeFrom.bd.detect(src); if (r[0]) return r[0].rawValue; } catch { decodeFrom.bd = false; }
+    }
+    await loadJsQR(); if (!w || !h) return null;
+    const c = decodeFrom.c || (decodeFrom.c = document.createElement("canvas")), sc = Math.min(1, 720 / Math.max(w, h));
+    c.width = Math.round(w * sc); c.height = Math.round(h * sc);
+    const ctx = c.getContext("2d", { willReadFrequently: true }); ctx.drawImage(src, 0, 0, c.width, c.height);
+    const r = window.jsQR(ctx.getImageData(0, 0, c.width, c.height).data, c.width, c.height, { inversionAttempts: "dontInvert" });
+    return r ? r.data : null;
+  }
+  async function startScan() {
+    stop(); const box = $("#scanBox"); let alive = true, stream = null, busy = false;
+    stopper = () => { alive = false; if (stream) stream.getTracks().forEach((t) => t.stop()); stopper = null; };
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+      if (!alive) return stream.getTracks().forEach((t) => t.stop());
+      box.innerHTML = `<video playsinline muted autoplay></video><i class="aim"></i>`;
+      const v = $("video", box); v.srcObject = stream; await v.play().catch(() => {});
+      const tick = async () => { if (!alive) return; if (v.readyState >= 2 && !busy) { busy = true; const t = await decodeFrom(v, v.videoWidth, v.videoHeight).catch(() => null); busy = false; if (t) onScan(t); } if (alive) setTimeout(tick, 220); };
+      tick();
+    } catch { box.innerHTML = `<p class="note">No se pudo abrir la cámara. Dale permiso o usa una foto del código.</p>`; }
+  }
+  const stop = () => { if (stopper) stopper(); };
+  function open(n) {
+    pick = n; const s = BY_N.get(n);
+    $("#pBody").innerHTML = `<h2 style="font-size:24px">Regalar «${esc(s.short)}»</h2>
+      <p class="install-sub">Pídele que abra su app en <b>Repetidas → Recibir un cromo</b> y escanea su código.</p>
+      <div class="scan" id="scanBox"></div><p class="scan-msg" id="scanMsg"></p>
+      <label class="btn btn-ghost btn-small">🖼️ Usar una foto del código<input type="file" accept="image/*" id="scanFile" hidden></label>`;
+    $("#panel").classList.add("open"); startScan();
+  }
+  function close() { stop(); $("#panel").classList.remove("open"); pick = null; }
+  async function onScan(txt) {
+    const m = RE_REQ.exec(txt);
+    if (!m) { $("#scanMsg").textContent = "Ese no es el código de «Recibir un cromo»"; return; }
+    stop();
+    const base = `SANTOS1A.${pick}.${m[1]}.${m[2]}`;
+    const code = `${APP_URL}#recibir=${base}.${await sign(base)}`;
+    log.push({ n: pick, t: Date.now() }); try { localStorage.setItem(LOG, JSON.stringify(log.slice(-500))); } catch {}
+    renderLog();
+    const qr = qrcode(0, "M"); qr.addData(code); qr.make();
+    $("#pBody").innerHTML = `<h2 style="font-size:24px">¡Listo!</h2><p class="install-sub">Que toque <b>«📷 Escanear el regalo»</b> y escanee este código para recibir <b>${esc(BY_N.get(pick).short)}</b>. Solo sirve para su móvil y una vez.</p>
+      <div class="qr-box">${qr.createSvgTag({ cellSize: 6, margin: 2, scalable: true })}</div>
+      <button class="btn btn-primary btn-block" id="pDone">Hecho</button>`;
+  }
+  $("#grid").addEventListener("click", (e) => { const c = e.target.closest("[data-n]"); if (c) open(+c.dataset.n); });
+  $("#panel").addEventListener("click", (e) => { if (e.target.closest("#pClose") || e.target.closest("#pDone") || e.target === $("#panel")) close(); });
+  $("#panel").addEventListener("change", (e) => {
+    if (e.target.id !== "scanFile" || !e.target.files[0]) return;
+    const im = new Image(), url = URL.createObjectURL(e.target.files[0]);
+    im.onload = async () => { const t = await decodeFrom(im, im.naturalWidth, im.naturalHeight).catch(() => null); URL.revokeObjectURL(url); if (t) onScan(t); else $("#scanMsg").textContent = "No encontré ningún código en esa foto"; };
+    im.src = url;
+  });
+  window.__admin = { onScan: (t) => onScan(t), open };
+})();
