@@ -609,8 +609,10 @@
       <button class="btn btn-primary btn-block" id="swapCards" ${dc >= SWAP_COST && own < TOTAL ? "" : "disabled"}>Cambiar ${SWAP_COST} repetidas por 1 nuevo</button>
       ${dups.length ? `<div class="dups">${dups.map((s) => `<div class="slot has" data-n="${s.n}">${cardHTML(s.n)}<span class="count">×${S.owned[s.n]}</span></div>`).join("")}</div>` : `<p class="note">Aún no tienes repetidas.</p>`}</div>`;
 
+    const pend = pendingGifts().length;
     html += `<div class="panel"><h3>Intercambia con tus amigos</h3><p>Pasa tus repetidas de un móvil a otro con un código QR. Cada código sirve una sola vez.</p>
-      <div class="btn-row"><button class="btn btn-primary btn-small" id="tradeGive" ${dups.length ? "" : "disabled"}>📤 Regalar una repetida</button><button class="btn btn-dark btn-small" id="tradeGet">📥 Recibir un cromo</button></div></div>`;
+      <div class="btn-row"><button class="btn btn-primary btn-small" id="tradeGive" ${dups.length ? "" : "disabled"}>📤 Regalar una repetida</button><button class="btn btn-dark btn-small" id="tradeGet">📥 Recibir un cromo</button></div>
+      ${pend ? `<button class="btn btn-ghost btn-small" id="tradePend" style="margin-top:10px">⏳ Regalos sin confirmar (${pend})</button>` : ""}</div>`;
 
     html += `<div class="panel"><h3>Tu avance por secciones</h3><div class="sec-progress">${SECTIONS.map((sec) => {
       const tot = sec.to - sec.from + 1, got = SANTOS.filter((s) => s.s === sec.id && has(s.n)).length;
@@ -631,6 +633,7 @@
     if (e.target.closest("#swapCards")) return doSwap();
     if (e.target.closest("#tradeGive")) return openTrade("dar");
     if (e.target.closest("#tradeGet")) return openTrade("recibir");
+    if (e.target.closest("#tradePend")) { openTrade("pend"); return showPending(); }
     if (e.target.closest("#exportBtn")) {
       const blob = new Blob([JSON.stringify({ app: "album-santos", v: 1, date: new Date().toISOString(), state: S })], { type: "application/json" });
       const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `album-santos-${dkey(today())}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
@@ -763,25 +766,36 @@
   function openTrade(mode, req = null) {
     tradeState = { mode, req };
     $("#trade").classList.add("open"); document.body.style.overflow = "hidden";
-    if (mode === "recibir") showRequest(); else pickDup();
+    if (mode === "recibir") showRequest(); else if (mode !== "pend") pickDup();
   }
   function closeTrade() { stopScan(); $("#trade").classList.remove("open"); document.body.style.overflow = ""; tradeState = null; if (current === "mas") renderMas(); }
   function showRequest() {
     S.inbox = (S.inbox || []).filter((x) => Date.now() - x.t < 30 * 864e5).slice(-20);
     let mine = S.inbox[S.inbox.length - 1];
     if (!mine || Date.now() - mine.t > 864e5) { mine = { k: rid(8), t: Date.now() }; S.inbox.push(mine); save(); }
-    tradeBody().innerHTML = `<h2>Recibir un cromo</h2><ol class="install-steps"><li>Enséñale este código a tu amigo</li><li>Él lo escanea y elige la repetida que te regala</li><li>Después escanea tú el código que aparece en su móvil</li></ol>
+    tradeBody().innerHTML = `<h2>Recibir un cromo</h2>
+      <p class="step-t"><b>1</b> Tu amigo escanea este código y elige la repetida</p>
       <div class="qr-box">${qrSVG(reqCode(mine.k))}</div>
-      <button class="btn btn-primary btn-block" id="tScanGift">📷 Escanear su código</button>`;
+      <p class="step-t"><b>2</b> Cuando a él le salga otro código, tócalo aquí:</p>
+      <button class="btn btn-primary btn-block big-scan" id="tScanGift">📷 Escanear el regalo</button>`;
   }
   function pickDup() {
     const dups = SANTOS.filter((s) => (S.owned[s.n] || 0) > 1);
-    const out = (S.outbox || []).filter((x) => Date.now() - x.t < 7 * 864e5);
+    const out = pendingGifts();
     tradeBody().innerHTML = `<h2>Regalar una repetida</h2>
       ${dups.length ? `<p class="install-sub">${tradeState.req ? "Ya tengo el código de tu amigo. " : ""}Elige el cromo que quieres pasar. Se quitará una copia de tu álbum.</p><div class="dups trade-dups">${dups.map((s) => `<div class="slot has" data-give="${s.n}">${cardHTML(s.n)}<span class="count">×${S.owned[s.n]}</span></div>`).join("")}</div>`
         : `<p class="install-sub">Aún no tienes repetidas para regalar.${tradeState.req ? " Si tienes la app instalada, ábrela y escanea el código desde allí: Repetidas → Regalar una repetida." : ""}</p>`}
-      ${out.length ? `<p class="note">Regalos que aún puedes volver a enseñar:</p><div class="btn-row" style="justify-content:center">${out.map((x, i) => `<button class="btn btn-ghost btn-small" data-out="${i}">${esc(BY_N.get(x.n).short)}</button>`).join("")}</div>` : ""}`;
+      ${out.length ? pendingHTML(out) : ""}`;
     tradeState.out = out;
+  }
+  // Regalos hechos que el amigo quizá no recibió: se pueden volver a enseñar o recuperar
+  const pendingGifts = () => (S.outbox || []).filter((x) => !x.r && !x.ok);
+  const pendingHTML = (out) => `<div class="pending"><p class="note"><b>Regalos sin confirmar.</b> Si tu amigo no llegó a recibirlo, enséñale otra vez el código o recupera tu cromo.</p>
+    ${out.map((x, i) => `<div class="pend-row"><span>${esc(BY_N.get(x.n).short)}</span><button class="btn btn-ghost btn-small" data-out="${i}">Enseñar código</button><button class="btn btn-ghost btn-small" data-back="${i}">Recuperar</button><button class="btn btn-ghost btn-small" data-okg="${i}">✓ Lo recibió</button></div>`).join("")}</div>`;
+  function showPending() {
+    tradeState = tradeState || { mode: "dar" };
+    const out = pendingGifts(); tradeState.out = out;
+    tradeBody().innerHTML = `<h2>Regalos sin confirmar</h2>${out.length ? pendingHTML(out) : `<p class="install-sub">No tienes regalos pendientes.</p>`}`;
   }
   function askScanReq(n) {
     tradeState.give = n;
@@ -807,8 +821,10 @@
     showGift(code, n);
   }
   function showGift(code, n) {
-    tradeBody().innerHTML = `<h2>¡Listo para entregar!</h2><p class="install-sub">Ahora tu amigo escanea este código para recibir <b>${esc(BY_N.get(n).short)}</b> (en su app: «Escanear su código»). Solo sirve para su móvil y una sola vez.</p>
-      <div class="qr-box">${qrSVG(code)}</div><button class="btn btn-primary btn-block" id="tDone">Hecho</button>`;
+    tradeBody().innerHTML = `<h2>¡Listo para entregar!</h2><p class="install-sub">Dile a tu amigo que toque <b>«📷 Escanear el regalo»</b> en su pantalla y que escanee este código para recibir <b>${esc(BY_N.get(n).short)}</b>. Solo sirve para su móvil y una vez.</p>
+      <div class="qr-box">${qrSVG(code)}</div><button class="btn btn-primary btn-block" id="tOk">✓ Ya lo recibió</button>
+      <p class="note">Si algo falla, no pierdes el cromo: en Repetidas → «Regalos sin confirmar» puedes enseñar el código otra vez o recuperarlo.</p>`;
+    tradeState.last = code;
   }
   function askScanGift() {
     tradeBody().innerHTML = `<h2>Escanea el código de tu amigo</h2><p class="install-sub">Es el que le aparece después de elegir el cromo que te regala.</p><div class="scan" id="scanBox"></div><p class="scan-msg" id="scanMsg"></p>
@@ -870,7 +886,12 @@
   }
   function stopScan() { if (scanStop) scanStop(); }
   $("#trade").addEventListener("click", (e) => {
+    if (e.target.closest("#tOk")) { const x = (S.outbox || []).find((o) => o.c === tradeState.last); if (x) { x.ok = 1; save(); } return closeTrade(); }
     if (e.target.closest("#tradeClose") || e.target === $("#trade") || e.target.closest("#tDone")) return closeTrade();
+    const bk = e.target.closest("[data-back]");
+    if (bk) { const x = tradeState.out[+bk.dataset.back]; if (x && !x.r) { x.r = 1; S.owned[x.n] = (S.owned[x.n] || 0) + 1; save(); updateChrome(); toast(`Recuperaste ${BY_N.get(x.n).short}`); } return $("#tradeBody .trade-dups") ? pickDup() : showPending(); }
+    const ok = e.target.closest("[data-okg]");
+    if (ok) { const x = tradeState.out[+ok.dataset.okg]; if (x) { x.ok = 1; save(); } return $("#tradeBody .trade-dups") ? pickDup() : showPending(); }
     if (e.target.closest("#tScanGift")) return askScanGift();
     const g = e.target.closest("[data-give]"); if (g) return askScanReq(+g.dataset.give);
     const o = e.target.closest("[data-out]"); if (o) { const x = tradeState.out[+o.dataset.out]; return showGift(x.c, x.n); }
