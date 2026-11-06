@@ -1,5 +1,5 @@
 /* Página del administrador: regala cualquier cromo en persona.
-   Solo funciona en el móvil que tenga guardada la llave privada (nunca está en el repositorio). */
+   Solo funciona en el móvil donde se creó la llave privada (nunca sale de ese móvil ni está en el repositorio). */
 (() => {
   "use strict";
   const $ = (s, el = document) => el.querySelector(s);
@@ -8,17 +8,34 @@
   const BY_N = new Map(SANTOS.map((s) => [s.n, s]));
   const IMGS = window.IMAGENES || {}, IMG_V = window.IMAGENES_V || 1;
   const KEY = "album-santos-admin-key", LOG = "album-santos-admin-log";
-  const PUB = { kty: "EC", crv: "P-256", x: "1_tN5eUWljZUn9Onnpbe1Tc9kjrT9FkiRN51gBroiPg", y: "8y0wt8b9Eijch7_UQwdZvFNhHj4AhobyaMTvb3Fid9Q" };
+  const PUB = { kty: "EC", crv: "P-256", x: "PENDIENTE", y: "PENDIENTE" }; // se rellena con el código que da la página
   const APP_URL = location.origin + location.pathname.replace(/admin\.html$/, "");
   const RE_REQ = /SANTOS1R\.([A-Z0-9]{10})\.([A-Z0-9]{8})/;
   const b64u = (u8) => btoa(String.fromCharCode(...u8)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   const toast = (m, ms = 3000) => { const t = $("#toast"); t.textContent = m; t.classList.add("show"); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), ms); };
 
-  // La llave llega una sola vez por el enlace …/admin.html#k=… y se guarda en este móvil
-  const hk = /[#&]k=([A-Za-z0-9_-]{40,50})/.exec(location.hash);
-  if (hk) { try { localStorage.setItem(KEY, hk[1]); } catch {} history.replaceState(null, "", location.pathname); }
-  let d = null; try { d = localStorage.getItem(KEY); } catch {}
-  if (!d) { $("#adm").innerHTML = `<div class="locked"><div style="font-size:48px">🔒</div><p>Esta página es solo para el administrador del álbum.</p></div>`; return; }
+  // La llave se crea en este móvil y nunca sale de él. Solo su parte pública va en la app.
+  const KEYPUB = KEY + "-pub";
+  let d = null, mine = null; try { d = localStorage.getItem(KEY); mine = localStorage.getItem(KEYPUB); } catch {}
+  const pubCode = () => mine;
+  if (!d || !mine || mine !== PUB.x + "." + PUB.y) {
+    $("#adm").innerHTML = d && mine
+      ? `<div class="locked"><div style="font-size:48px">🔑</div><h1>Falta activar tu llave</h1><p>Copia este código y mándaselo a Claude para que lo active en la app:</p>
+          <p style="word-break:break-all;background:var(--card);padding:12px;border-radius:12px;font-family:monospace;font-size:13px;color:var(--ink)" id="pc">${esc(mine)}</p>
+          <button class="btn btn-primary" id="copy">Copiar código</button></div>`
+      : `<div class="locked"><div style="font-size:48px">🔒</div><p>Esta página es solo para el administrador del álbum.</p>
+          ${PUB.x === "PENDIENTE" ? `<button class="btn btn-ghost btn-small" id="mk" style="margin-top:20px">Crear llave en este móvil</button>` : ""}</div>`;
+    document.addEventListener("click", async (e) => {
+      if (e.target.closest("#mk")) {
+        const k = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+        const j = await crypto.subtle.exportKey("jwk", k.privateKey);
+        try { localStorage.setItem(KEY, j.d); localStorage.setItem(KEYPUB, j.x + "." + j.y); } catch {}
+        location.reload();
+      }
+      if (e.target.closest("#copy")) { try { await navigator.clipboard.writeText(mine); toast("Copiado"); } catch { toast("Mantén pulsado el código para copiarlo"); } }
+    });
+    return;
+  }
   let keyP = crypto.subtle.importKey("jwk", { ...PUB, d, ext: true }, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
   async function sign(text) { const k = await keyP; return b64u(new Uint8Array(await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, k, new TextEncoder().encode(text)))); }
 

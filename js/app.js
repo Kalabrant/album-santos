@@ -832,7 +832,7 @@
     startScan(onScanGift);
   }
   // Regalos del administrador: firmados con una llave que solo tiene él (aquí solo está la llave pública)
-  const ADMIN_PUB = { kty: "EC", crv: "P-256", x: "1_tN5eUWljZUn9Onnpbe1Tc9kjrT9FkiRN51gBroiPg", y: "8y0wt8b9Eijch7_UQwdZvFNhHj4AhobyaMTvb3Fid9Q" };
+  const ADMIN_PUB = { kty: "EC", crv: "P-256", x: "PENDIENTE", y: "PENDIENTE" };
   const RE_ADMIN = /(SANTOS1A\.(\d{1,3})\.([A-Z0-9]{10})\.([A-Z0-9]{8}))\.([A-Za-z0-9_-]{80,90})/;
   const b64u = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
   async function adminOk(base, sig) {
