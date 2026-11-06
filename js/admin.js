@@ -39,6 +39,9 @@
   let keyP = crypto.subtle.importKey("jwk", { ...PUB, d, ext: true }, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
   async function sign(text) { const k = await keyP; return b64u(new Uint8Array(await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, k, new TextEncoder().encode(text)))); }
 
+  let preReq = null; // código de la persona ya leído con la cámara del móvil (enlace #dar=)
+  { const hd = RE_REQ.exec(decodeURIComponent(location.hash || "")); if (hd) { preReq = hd[0]; history.replaceState(null, "", location.pathname); } }
+  const showPre = () => { const el = $("#pre"); if (el) el.style.display = preReq ? "" : "none"; };
   const lab = (s) => s.l || s.n;
   const img = (n) => IMGS[n] ? `img/santos/${String(n).padStart(3, "0")}.${IMGS[n]}?v=${IMG_V}` : "icons/icon-192.png";
   let q = "";
@@ -49,10 +52,11 @@
   }
   let log = []; try { log = JSON.parse(localStorage.getItem(LOG) || "[]"); } catch {}
   $("#adm").innerHTML = `<h1>Regalar cromos</h1><p class="sub">Elige cualquier cromo. Luego escanea el código de la persona (en su app: Repetidas → Recibir un cromo) y enséñale el código que aparece.</p>
+    <div class="panel" id="pre" style="display:none;background:#e7f7ef"><b>✓ Ya leí el código de la persona.</b> Ahora toca el cromo que quieres regalarle.</div>
     <label class="search"><input id="q" type="search" placeholder="Busca por nombre, número o letra" autocomplete="off"></label><div class="adm-grid" id="grid"></div>
     <p class="log" id="log"></p>`;
   const renderLog = () => { $("#log").textContent = log.length ? `Has regalado ${log.length} ${log.length === 1 ? "cromo" : "cromos"} desde este móvil.` : ""; };
-  render(); renderLog();
+  render(); renderLog(); showPre();
   $("#q").addEventListener("input", (e) => { q = e.target.value.trim(); render(); });
 
   /* ── Escáner ── */
@@ -85,19 +89,31 @@
   const stop = () => { if (stopper) stopper(); };
   function open(n) {
     pick = n; const s = BY_N.get(n);
+    $("#panel").classList.add("open");
+    if (preReq) { const r = preReq; preReq = null; showPre(); $("#pBody").innerHTML = `<p class="install-sub">Generando el código…</p>`; return onScan(r); }
     $("#pBody").innerHTML = `<h2 style="font-size:24px">Regalar «${esc(s.short)}»</h2>
       <p class="install-sub">Pídele que abra su app en <b>Repetidas → Recibir un cromo</b> y escanea su código.</p>
       <div class="scan" id="scanBox"></div><p class="scan-msg" id="scanMsg"></p>
-      <label class="btn btn-ghost btn-small">🖼️ Usar una foto del código<input type="file" accept="image/*" id="scanFile" hidden></label>`;
-    $("#panel").classList.add("open"); startScan();
+      <div class="btn-row" style="justify-content:center"><button class="btn btn-ghost btn-small" id="reCam">🔄 Reiniciar cámara</button>
+      <label class="btn btn-ghost btn-small">🖼️ Usar una foto del código<input type="file" accept="image/*" id="scanFile" hidden></label></div>`;
+    startScan();
   }
   function close() { stop(); $("#panel").classList.remove("open"); pick = null; }
   async function onScan(txt) {
     const m = RE_REQ.exec(txt);
-    if (!m) { $("#scanMsg").textContent = "Ese no es el código de «Recibir un cromo»"; return; }
+    if (!m) { const el = $("#scanMsg"); if (el) el.textContent = /SANTOS1/.test(txt) ? "Ese código es el de un regalo. Escanea el de «Recibir un cromo»" : "Ese no es el código de «Recibir un cromo»"; return; }
+    if (onScan.busy) return; onScan.busy = true;
     stop();
-    const base = `SANTOS1A.${pick}.${m[1]}.${m[2]}`;
-    const code = `${APP_URL}#recibir=${base}.${await sign(base)}`;
+    let code;
+    try {
+      const base = `SANTOS1A.${pick}.${m[1]}.${m[2]}`;
+      code = `${APP_URL}#recibir=${base}.${await sign(base)}`;
+    } catch (e) {
+      onScan.busy = false;
+      $("#pBody").innerHTML = `<h2 style="font-size:24px">No pude crear el código</h2><p class="install-sub">${esc(e && e.message || e)}</p><p class="note">Cierra y vuelve a intentarlo. Si sigue igual, mándale a Claude una captura.</p>`;
+      return;
+    }
+    onScan.busy = false;
     log.push({ n: pick, t: Date.now() }); try { localStorage.setItem(LOG, JSON.stringify(log.slice(-500))); } catch {}
     renderLog();
     const qr = qrcode(0, "M"); qr.addData(code); qr.make();
@@ -106,7 +122,7 @@
       <button class="btn btn-primary btn-block" id="pDone">Hecho</button>`;
   }
   $("#grid").addEventListener("click", (e) => { const c = e.target.closest("[data-n]"); if (c) open(+c.dataset.n); });
-  $("#panel").addEventListener("click", (e) => { if (e.target.closest("#pClose") || e.target.closest("#pDone") || e.target === $("#panel")) close(); });
+  $("#panel").addEventListener("click", (e) => { if (e.target.closest("#reCam")) return startScan(); if (e.target.closest("#pClose") || e.target.closest("#pDone") || e.target === $("#panel")) close(); });
   $("#panel").addEventListener("change", (e) => {
     if (e.target.id !== "scanFile" || !e.target.files[0]) return;
     const im = new Image(), url = URL.createObjectURL(e.target.files[0]);

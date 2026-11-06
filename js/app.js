@@ -937,6 +937,8 @@
     try { history.replaceState(null, "", location.pathname + location.search); } catch {}
     setTimeout(() => {
       if (tradeState) closeTrade();
+      let isAdmin = false; try { isAdmin = !!localStorage.getItem("album-santos-admin-key"); } catch {}
+      if (link[1] === "dar" && isAdmin && RE_REQ.test(link[2])) { location.href = "admin.html#" + RE_REQ.exec(link[2])[0]; return; }
       if (link[1] === "dar") { if (RE_REQ.test(link[2])) { go("mas"); openTrade("dar", link[2]); } }
       else { go("mas"); onScanGift(link[2]); }
     }, delay);
