@@ -63,15 +63,22 @@
   let stopper = null, pick = null;
   let jsqrP = null;
   const loadJsQR = () => jsqrP || (jsqrP = new Promise((ok, ko) => { const s = document.createElement("script"); s.src = "js/vendor/jsQR.js"; s.onload = ok; s.onerror = ko; document.head.appendChild(s); }));
-  async function decodeFrom(src, w, h) {
-    if ("BarcodeDetector" in window && decodeFrom.bd !== false) {
-      try { decodeFrom.bd = decodeFrom.bd || new BarcodeDetector({ formats: ["qr_code"] }); const r = await decodeFrom.bd.detect(src); if (r[0]) return r[0].rawValue; } catch { decodeFrom.bd = false; }
-    }
-    await loadJsQR(); if (!w || !h) return null;
+  async function decodeFrom(src, w, h) { // src: vídeo de la cámara o foto
+    if (!w || !h) return null;
     const c = decodeFrom.c || (decodeFrom.c = document.createElement("canvas")), sc = Math.min(1, 720 / Math.max(w, h));
     c.width = Math.round(w * sc); c.height = Math.round(h * sc);
     const ctx = c.getContext("2d", { willReadFrequently: true }); ctx.drawImage(src, 0, 0, c.width, c.height);
-    const r = window.jsQR(ctx.getImageData(0, 0, c.width, c.height).data, c.width, c.height, { inversionAttempts: "dontInvert" });
+    // 1) lector del sistema, sobre una copia fija de la imagen y con tiempo límite (en algunos móviles se quedaba colgado)
+    if ("BarcodeDetector" in window && decodeFrom.bd !== false) {
+      try {
+        decodeFrom.bd = decodeFrom.bd || new BarcodeDetector({ formats: ["qr_code"] });
+        const r = await Promise.race([decodeFrom.bd.detect(c), new Promise((_, ko) => setTimeout(() => ko(new Error("lento")), 1200))]);
+        if (r && r[0]) return r[0].rawValue;
+      } catch { decodeFrom.bd = false; }
+    }
+    // 2) lector propio (jsQR), siempre
+    await loadJsQR();
+    const r = window.jsQR(ctx.getImageData(0, 0, c.width, c.height).data, c.width, c.height, { inversionAttempts: "attemptBoth" });
     return r ? r.data : null;
   }
   async function startScan() {
@@ -82,18 +89,29 @@
       if (!alive) return stream.getTracks().forEach((t) => t.stop());
       box.innerHTML = `<video playsinline muted autoplay></video><i class="aim"></i>`;
       const v = $("video", box); v.srcObject = stream; await v.play().catch(() => {});
-      const tick = async () => { if (!alive) return; if (v.readyState >= 2 && !busy) { busy = true; const t = await decodeFrom(v, v.videoWidth, v.videoHeight).catch(() => null); busy = false; if (t) onScan(t); } if (alive) setTimeout(tick, 220); };
+      let tries = 0;
+      const tick = async () => {
+        if (!alive) return;
+        if (v.readyState >= 2 && !busy) {
+          busy = true; tries++;
+          const t = await decodeFrom(v, v.videoWidth, v.videoHeight).catch(() => null); busy = false;
+          const st = $("#scanSt"); if (st) st.textContent = t ? "Código leído" : `Buscando el código… (${tries})`;
+          if (t && alive) onScan(t);
+        } else if (v.readyState < 2) { const st = $("#scanSt"); if (st) st.textContent = "Encendiendo la cámara…"; }
+        if (alive) setTimeout(tick, 200);
+      };
       tick();
     } catch { box.innerHTML = `<p class="note">No se pudo abrir la cámara. Dale permiso o usa una foto del código.</p>`; }
   }
   const stop = () => { if (stopper) stopper(); };
   function open(n) {
     pick = n; const s = BY_N.get(n);
-    $("#panel").classList.add("open");
+    if (document.activeElement) document.activeElement.blur(); // cierra el teclado del buscador (en iPhone dejaba la vista ampliada)
+    $("#panel").classList.add("open"); $("#panel .install-sheet").scrollTop = 0;
     if (preReq) { const r = preReq; preReq = null; showPre(); $("#pBody").innerHTML = `<p class="install-sub">Generando el código…</p>`; return onScan(r); }
     $("#pBody").innerHTML = `<h2 style="font-size:24px">Regalar «${esc(s.short)}»</h2>
       <p class="install-sub">Pídele que abra su app en <b>Repetidas → Recibir un cromo</b> y escanea su código.</p>
-      <div class="scan" id="scanBox"></div><p class="scan-msg" id="scanMsg"></p>
+      <div class="scan" id="scanBox"></div><p class="note" id="scanSt" style="margin:-6px 0 4px"></p><p class="scan-msg" id="scanMsg"></p>
       <div class="btn-row" style="justify-content:center"><button class="btn btn-ghost btn-small" id="reCam">🔄 Reiniciar cámara</button>
       <label class="btn btn-ghost btn-small">🖼️ Usar una foto del código<input type="file" accept="image/*" id="scanFile" hidden></label></div>`;
     startScan();
@@ -117,6 +135,7 @@
     log.push({ n: pick, t: Date.now() }); try { localStorage.setItem(LOG, JSON.stringify(log.slice(-500))); } catch {}
     renderLog();
     const qr = qrcode(0, "M"); qr.addData(code); qr.make();
+    $("#panel .install-sheet").scrollTop = 0;
     $("#pBody").innerHTML = `<h2 style="font-size:24px">¡Listo!</h2><p class="install-sub">Que toque <b>«📷 Escanear el regalo»</b> y escanee este código para recibir <b>${esc(BY_N.get(pick).short)}</b>. Solo sirve para su móvil y una vez.</p>
       <div class="qr-box">${qr.createSvgTag({ cellSize: 6, margin: 2, scalable: true })}</div>
       <button class="btn btn-primary btn-block" id="pDone">Hecho</button>`;

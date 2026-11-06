@@ -871,16 +871,22 @@
   function scanMsg(m) { const el = $("#scanMsg"); if (el && $("#trade").classList.contains("open")) el.textContent = m; toast(m, m.length > 60 ? 6000 : 3000); vibrate([30, 40, 30]); }
   let jsqrP = null;
   const loadJsQR = () => jsqrP || (jsqrP = new Promise((ok, ko) => { const s = document.createElement("script"); s.src = "js/vendor/jsQR.js"; s.onload = ok; s.onerror = ko; document.head.appendChild(s); }));
-  async function decodeFrom(src, w, h) { // src: video o imagen
-    if ("BarcodeDetector" in window && decodeFrom.bd !== false) {
-      try { decodeFrom.bd = decodeFrom.bd || new BarcodeDetector({ formats: ["qr_code"] }); const r = await decodeFrom.bd.detect(src); if (r[0]) return r[0].rawValue; } catch { decodeFrom.bd = false; }
-    }
-    await loadJsQR(); // en algunos móviles el detector del sistema no ve nada: probamos también con jsQR
+  async function decodeFrom(src, w, h) { // src: vídeo de la cámara o foto
     if (!w || !h) return null;
     const c = decodeFrom.c || (decodeFrom.c = document.createElement("canvas")), sc = Math.min(1, 720 / Math.max(w, h));
     c.width = Math.round(w * sc); c.height = Math.round(h * sc);
     const ctx = c.getContext("2d", { willReadFrequently: true }); ctx.drawImage(src, 0, 0, c.width, c.height);
-    const r = window.jsQR(ctx.getImageData(0, 0, c.width, c.height).data, c.width, c.height, { inversionAttempts: "dontInvert" });
+    // 1) lector del sistema, sobre una copia fija de la imagen y con tiempo límite (en algunos móviles se quedaba colgado)
+    if ("BarcodeDetector" in window && decodeFrom.bd !== false) {
+      try {
+        decodeFrom.bd = decodeFrom.bd || new BarcodeDetector({ formats: ["qr_code"] });
+        const r = await Promise.race([decodeFrom.bd.detect(c), new Promise((_, ko) => setTimeout(() => ko(new Error("lento")), 1200))]);
+        if (r && r[0]) return r[0].rawValue;
+      } catch { decodeFrom.bd = false; }
+    }
+    // 2) lector propio (jsQR), siempre
+    await loadJsQR();
+    const r = window.jsQR(ctx.getImageData(0, 0, c.width, c.height).data, c.width, c.height, { inversionAttempts: "attemptBoth" });
     return r ? r.data : null;
   }
   async function startScan(cb) {
