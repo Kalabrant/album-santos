@@ -8,7 +8,7 @@
   const BY_N = new Map(SANTOS.map((s) => [s.n, s]));
   const IMGS = window.IMAGENES || {}, IMG_V = window.IMAGENES_V || 1;
   const KEY = "album-santos-admin-key", LOG = "album-santos-admin-log";
-  const PUB = { kty: "EC", crv: "P-256", x: "PENDIENTE", y: "PENDIENTE" }; // se rellena con el código que da la página
+  const PUB = { kty: "EC", crv: "P-256", x: "601f9JILOxEwepe20Mgb9n0dVmCfIIlEfd3vhUtvbiE", y: "swU4SBcUXc-DWx1hEvR1JOmClFvL6sbJOofITcnbDiI" }; // se rellena con el código que da la página
   const APP_URL = location.origin + location.pathname.replace(/admin\.html$/, "");
   const RE_REQ = /SANTOS1R\.([A-Z0-9]{10})\.([A-Z0-9]{8})/;
   const b64u = (u8) => btoa(String.fromCharCode(...u8)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
