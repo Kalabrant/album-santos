@@ -714,15 +714,32 @@
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && dkey(today()) !== lastKey) { lastKey = dkey(today()); go(current); } });
 
   /* ───────── Novedades (se muestran una vez a quien ya usaba la app) ───────── */
-  const NEWS_V = 2;
+  const NEWS_V = 3;
   function maybeNews() {
     if (!S.welcome || (S.news || 0) >= NEWS_V) { S.news = NEWS_V; save(); return; }
+    $$("#news .news-list li").forEach((li) => { li.style.display = +li.dataset.v > (S.news || 0) ? "" : "none"; }); // solo lo que aún no vio
     setTimeout(() => { if (!$("#install").classList.contains("open")) $("#news").classList.add("open"); else maybeNews._wait = true; }, 900);
   }
   $("#news").addEventListener("click", (e) => { if (e.target.closest("#newsOk") || e.target === $("#news")) { $("#news").classList.remove("open"); S.news = NEWS_V; save(); } });
 
   /* ───────── Regalo de promoción: Nuestra Señora de la Natividad (especial E) ───────── */
   const PROMO = (SANTOS.find((s) => s.l === "E") || {}).n;
+  /* ───────── Regalo de la mañana: un cromo al abrir la app antes de las 12 (una vez al día) ───────── */
+  function maybeMorning() {
+    const busy = () => opening || ["#install", "#news", "#trade"].some((id) => $(id).classList.contains("open"));
+    const tryIt = () => {
+      const d = new Date(), k = dkey(today());
+      if (d.getHours() < 5 || d.getHours() >= 12 || S.morning === k) return;
+      if (busy() || (PROMO && !S.promoE)) return setTimeout(tryIt, 1200);
+      S.morning = k;
+      const n = drawRandom(Math.random, (s) => !s.p && !s.e && !locked(s)); // nunca premium ni especial
+      startOpening("gift", [n], { [n]: "Regalo de la mañana ☀️" });
+      $("#tapHint").textContent = "¡Buenos días! Toca para abrir tu regalo";
+    };
+    setTimeout(tryIt, 3000);
+  }
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") maybeMorning(); });
+
   function maybeGift() {
     if (!PROMO || S.promoE) return;
     const busy = () => opening || ["#install", "#news", "#trade"].some((id) => $(id).classList.contains("open"));
@@ -936,6 +953,7 @@
   maybeNews();
   welcome();
   maybeGift();
+  maybeMorning();
   const start = (location.hash || "").slice(1);
   function handleLink(delay) { // enlaces de intercambio leídos con la cámara del móvil
     let h = location.hash.slice(1); try { h = decodeURIComponent(h); } catch {}
