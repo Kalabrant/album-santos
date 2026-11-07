@@ -780,7 +780,7 @@
       <button class="btn btn-primary btn-block big-scan" id="tScanGift">📷 Escanear el regalo</button>`;
   }
   function pickDup() {
-    const dups = SANTOS.filter((s) => (S.owned[s.n] || 0) > 1);
+    const dups = SANTOS.filter((s) => (S.owned[s.n] || 0) > 1 && !locked(s)); // los que solo salen en su día no se intercambian
     const out = pendingGifts();
     tradeBody().innerHTML = `<h2>Regalar una repetida</h2>
       ${dups.length ? `<p class="install-sub">${tradeState.req ? "Ya tengo el código de tu amigo. " : ""}Elige el cromo que quieres pasar. Se quitará una copia de tu álbum.</p><div class="dups trade-dups">${dups.map((s) => `<div class="slot has" data-give="${s.n}">${cardHTML(s.n)}<span class="count">×${S.owned[s.n]}</span></div>`).join("")}</div>`
@@ -812,7 +812,7 @@
     S.usedReq = S.usedReq || [];
     if (S.usedReq.includes(dev + nonce)) return scanMsg("Ya le pasaste un cromo con ese código. Pídele que abra uno nuevo");
     const n = tradeState.give;
-    if ((S.owned[n] || 0) < 2) { stopScan(); return pickDup(); }
+    if ((S.owned[n] || 0) < 2 || locked(BY_N.get(n))) { stopScan(); return pickDup(); }
     stopScan();
     S.owned[n]--; S.usedReq.push(dev + nonce); S.usedReq = S.usedReq.slice(-200);
     const code = giftCode(n, dev, nonce);
@@ -858,6 +858,7 @@
     if (!m) return scanMsg(RE_REQ.test(txt) ? "Ese es tu código para recibir: lo escanea tu amigo. Tú escanea el que le sale después de elegir el cromo" : "Ese no es un código de cromo");
     const [, base, ns, dev, nonce, , sig] = m, n = +ns;
     if (th(TSALT + base) !== sig || !BY_N.get(n)) return scanMsg("Ese código no es válido");
+    if (locked(BY_N.get(n))) return scanMsg("Ese cromo no se puede intercambiar.");
     const fromLink = !tradeState || !tradeState.cb;
     const hint = fromLink ? " Si tienes la app instalada, ábrela y escanéalo desde allí: Repetidas → Recibir un cromo → Escanear su código." : "";
     if (dev !== S.dev) return scanMsg("Ese código es para otro móvil." + hint);
