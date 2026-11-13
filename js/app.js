@@ -13,7 +13,16 @@
   const CARDS_PER_PACK = 5;
   const SWAP_COST = 10;
   const PREMIUM_WEIGHT = 0.3; // los premium salen menos al azar
-  const KEY = "album-santos-v1";
+  const KEY0 = "album-santos-v1";
+  // Álbumes de la familia: varios álbumes en el mismo móvil (el primero usa la clave de siempre)
+  const FAM_KEY = KEY0 + "-familia";
+  let FAM = { list: [{ id: 0, name: "" }], cur: 0 };
+  try { FAM = Object.assign(FAM, JSON.parse(localStorage.getItem(FAM_KEY) || "{}")); } catch {}
+  if (!FAM.list.some((p) => p.id === FAM.cur)) FAM.cur = 0;
+  const saveFam = () => { try { localStorage.setItem(FAM_KEY, JSON.stringify(FAM)); } catch {} };
+  const KEY = FAM.cur ? `${KEY0}-p${FAM.cur}` : KEY0;
+  const T = window.TEMPORADAS || {};
+  const ADV = window.ADVIENTO || {};
 
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -54,6 +63,16 @@
       522: [nthSunday(y, 4, 2)], 530: [nthSunday(y, 4, 1)],
     };
   }
+  // Solemnidades fijas que se trasladan: San José y la Anunciación en Semana Santa u octava de Pascua,
+  // la Anunciación en domingo de Cuaresma y la Inmaculada en domingo de Adviento.
+  function solemn(y, m, dd) {
+    const E = easter(y), palm = addDays(E, -7), d = new Date(y, m - 1, dd, 12);
+    if (m === 3 && d >= palm && d <= addDays(E, 7)) return dd === 19 ? addDays(palm, -1) : addDays(E, 8);
+    if (m === 3 && d.getDay() === 0) return addDays(d, 1);
+    if (m === 12 && dd === 8 && d.getDay() === 0) return addDays(d, 1);
+    return d;
+  }
+  const TRANSF = { 64: [19, 3], 24: [25, 3], 22: [8, 12] };
   const feastCache = {};
   function saintsOfDay(d) {
     const k = dkey(d);
@@ -61,7 +80,11 @@
     const mv = movable(d.getFullYear());
     const out = [];
     for (const s of SANTOS) {
-      let hit = s.fd.some(([dd, mm]) => dd === d.getDate() && mm === d.getMonth() + 1);
+      let hit = s.fd.some(([dd, mm]) => {
+        const t = TRANSF[s.n];
+        if (t && t[0] === dd && t[1] === mm) return same(solemn(d.getFullYear(), mm, dd), d);
+        return dd === d.getDate() && mm === d.getMonth() + 1;
+      });
       if (!hit && mv[s.n]) hit = mv[s.n].some((x) => same(x, d));
       if (!hit && s.n === 6 && d.getDate() === 25) hit = true; // Niño Jesús de Praga: el 25 de cada mes
       if (hit) out.push(s.n);
@@ -70,13 +93,49 @@
   }
   function bigFeast(d) { // fechas muy señaladas: sobre extra
     const y = d.getFullYear(), E = easter(y), md = `${d.getMonth() + 1}-${d.getDate()}`;
-    const fixed = { "12-25": "Navidad", "1-1": "Santa María, Madre de Dios", "1-6": "Epifanía del Señor", "3-19": "San José", "3-25": "Anunciación del Señor",
-      "6-29": "San Pedro y San Pablo", "8-15": "Asunción de la Virgen", "11-1": "Todos los Santos", "12-8": "Inmaculada Concepción", "12-12": "Virgen de Guadalupe", "9-8": "Natividad de la Virgen" };
+    const fixed = { "12-25": "Navidad", "1-1": "Santa María, Madre de Dios", "1-6": "Epifanía del Señor",
+      "6-29": "San Pedro y San Pablo", "8-15": "Asunción de la Virgen", "11-1": "Todos los Santos", "12-12": "Virgen de Guadalupe", "9-8": "Natividad de la Virgen",
+      "12-13": "Santa Lucía, fiesta de la Parroquia" };
     if (fixed[md]) return fixed[md];
-    const mov = [[E, "Domingo de Resurrección"], [addDays(E, 7), "Divina Misericordia"], [addDays(E, 49), "Pentecostés"], [addDays(E, 60), "Corpus Christi"],
+    const mov = [[solemn(y, 3, 19), "San José"], [solemn(y, 3, 25), "Anunciación del Señor"], [solemn(y, 12, 8), "Inmaculada Concepción"], [E, "Domingo de Resurrección"], [addDays(E, 7), "Divina Misericordia"], [addDays(E, 49), "Pentecostés"], [addDays(E, 60), "Corpus Christi"],
       [addDays(E, 68), "Sagrado Corazón de Jesús"], [addDays(E, 39), "Ascensión del Señor"], [addDays(advent1(y), -7), "Cristo Rey"]];
     for (const [x, n] of mov) if (same(x, d)) return n;
     return null;
+  }
+
+  /* ───────── Temporadas del año litúrgico ───────── */
+  const parseD = (k) => new Date(k + "T12:00:00");
+  const daysBetween = (a, b) => Math.round((b - a) / 864e5);
+  const baptism = (y) => { const j6 = new Date(y, 0, 6, 12); return addDays(j6, 7 - j6.getDay() || 7); };
+  function seasonOf(d) {
+    const y = d.getFullYear(), E = easter(y);
+    if (d >= advent1(y) || d <= baptism(y)) return "adviento";
+    if (d < addDays(E, -46)) return "llamados";
+    if (d < E) return "cuaresma";
+    if (d <= addDays(E, 49)) return "pascua";
+    if (d.getMonth() < 8) return "corazon";
+    if (d.getMonth() < 10) return "volvemos";
+    return "santos";
+  }
+  const isGoodFriday = (d) => same(d, addDays(easter(d.getFullYear()), -2));
+  const isLent = (d) => { const E = easter(d.getFullYear()); return d >= addDays(E, -46) && d < E; };
+  const isVacation = (d) => d.getMonth() === 6 || d.getMonth() === 7; // julio y agosto
+
+  // Especial del mes: el día de su fiesta, quien cumple los 5 retos se lo lleva seguro
+  const SECRETOS = new Set([701, 710, 711, 712, 713]); // no se anuncian de antemano
+  function especialesDelAno(y) {
+    const E = easter(y), F = (m, d) => new Date(y, m - 1, d, 12);
+    return [[F(2, 11), 708], [addDays(E, -30), 703], [solemn(y, 3, 19), 714], [addDays(E, 7), 704], [F(5, 22), 718], [addDays(E, 60), 710],
+      [addDays(E, 68), 702], [F(6, 13), 715], [F(6, 27), 709], [F(7, 11), 717], [F(9, 8), 705], [F(9, 11), 706], [F(9, 15), 707],
+      [F(10, 1), 716], [F(10, 2), 711], [F(12, 13), 701]].map(([d, n]) => ({ d, n })).sort((a, b) => a.d - b.d);
+  }
+  function especialHoy(d = today()) {
+    const e = especialesDelAno(d.getFullYear()).find((x) => same(x.d, d));
+    return e && BY_N.get(e.n) && !locked(BY_N.get(e.n)) ? e.n : null;
+  }
+  function proximoEspecial(d = today()) {
+    const list = [...especialesDelAno(d.getFullYear()), ...especialesDelAno(d.getFullYear() + 1)];
+    return list.find((x) => x.d > d && !SECRETOS.has(x.n));
   }
 
   /* ───────── Azar con semilla (los retos del día son los mismos todo el día) ───────── */
@@ -102,10 +161,25 @@
         const n = sod[Math.floor(r() * sod.length)], s = BY_N.get(n);
         list[3] = { id: "santo" + n, c: "santo", t: `Hoy celebramos a ${s.short}: lee su historia y pídele su intercesión`, s: n };
       }
+      // Retos de temporada: Cuaresma (y sus viernes) y verano cambian el reto de virtud
+      const CU = window.RETOS_CUARESMA || [], VE = window.RETOS_VERANO || [];
+      if (isLent(d) && CU.length) {
+        const fri = d.getDay() === 5 && window.RETO_VIERNES_CUARESMA;
+        const j = Math.floor(r() * CU.length), x = fri ? window.RETO_VIERNES_CUARESMA : CU[j];
+        list[4] = { id: fri ? "cuv" : "cu" + j, c: x.c, t: x.t, s: null };
+      } else if (isVacation(d) && VE.length) {
+        const j = Math.floor(r() * VE.length);
+        list[4] = { id: "ve" + j, c: VE[j].c, t: VE[j].t, s: null };
+      }
       // solo 1 o 2 retos del día llevan «cromo seguro» (el del santo del día siempre)
       const linked = list.map((x, i) => i).filter((i) => list[i].s && list[i].c !== "santo").sort(() => r() - 0.5).slice(0, sod.length ? 1 : 2);
       list.forEach((x, i) => { if (x.c !== "santo" && !linked.includes(i)) x.s = null; });
-      S.days[k] = { retos: list, done: [], claimed: false, swapUsed: false, granted: [] };
+      const sobrio = isGoodFriday(d) && (window.RETOS_VIERNES_SANTO || []).length;
+      if (sobrio) { // Viernes Santo: retos propios, sin cromos ni sobres
+        list.length = 0;
+        window.RETOS_VIERNES_SANTO.forEach((x, i) => list.push({ id: "vs" + i, c: x.c, t: x.t, s: null }));
+      }
+      S.days[k] = { retos: list, done: [], claimed: false, swapUsed: !!sobrio, granted: [], sobrio: !!sobrio };
       // limpiamos días muy antiguos
       const keys = Object.keys(S.days).sort();
       while (keys.length > 40) delete S.days[keys.shift()];
@@ -127,11 +201,27 @@
   /* ───────── Reto de la semana (lunes a domingo) ───────── */
   const WEEKLY = window.RETOS_SEMANA || [];
   function weekKey(d = today()) { const m = addDays(d, -((d.getDay() + 6) % 7)); return dkey(m); } // lunes
+  function weekText(mon) { // reto de la semana de temporada, o null para el normal
+    const SE = window.SEMANAS_ESPECIALES || {}, SC = window.SEMANAS_CUARESMA || [];
+    const y = mon.getFullYear(), E = easter(y), sun = addDays(mon, 6), has = (d) => d >= mon && d <= sun;
+    const palmMon = addDays(E, -6), ashMon = addDays(E, -48);
+    if (same(mon, palmMon)) return SE.santa;
+    if (mon >= ashMon && mon < palmMon && SC.length) return SC[Math.floor(daysBetween(ashMon, mon) / 7) % SC.length];
+    if (has(new Date(y, 0, 31, 12))) return SE.bosco;
+    if (has(new Date(y, 4, 31, 12))) return SE.flores;
+    if (dkey(mon) === "2027-08-02") return SE.jmj;
+    if (has(new Date(y, 9, 7, 12))) return SE.rosario;
+    const lastSunOct = (() => { const d = new Date(y, 9, 31, 12); return addDays(d, -d.getDay()); })();
+    if (has(addDays(lastSunOct, -7))) return SE.domund;
+    if (has(new Date(y, 10, 1, 12)) || has(new Date(sun.getFullYear(), 10, 1, 12))) return SE.santos;
+    return null;
+  }
   function weekState() {
     const k = weekKey();
     if (!S.week || S.week.k !== k) {
       const r = rng("semana-" + k);
       S.week = { k, i: Math.floor(r() * WEEKLY.length), done: false };
+      const t = weekText(parseD(k)); if (t) S.week.t = t;
       save();
     }
     return S.week;
@@ -164,6 +254,7 @@
     const push = (n, reason) => { if (!cards.includes(n)) { cards.push(n); if (reason) why[n] = reason; } };
     if (kind === "welcome") push(1, "Bienvenida");
     if (kind === "premium") push(drawRandom(Math.random, (s) => s.p && !s.e && !locked(s)), "Premium seguro");
+    if (S.espPend) { push(S.espPend, "Especial del día 💎"); S.espPend = null; }
     for (const n of saintsOfDay(d)) push(n, "Santo del día");
     for (const r of D.retos) {
       if (r.s && D.done.includes(r.id) && !D.granted.includes(r.s)) { push(r.s, "Por tu reto"); D.granted.push(r.s); }
@@ -282,6 +373,9 @@
     const np = (S.packs || 0) + (S.ppacks || 0); const bp = $("#badgePacks"); bp.textContent = np || ""; bp.dataset.n = np;
     const D = dayState(); const left = D.claimed ? 0 : D.retos.length - D.done.length;
     const bh = $("#badgeHoy"); bh.textContent = left || ""; bh.dataset.n = left;
+    const ai = advInfo(), tk = dkey(today());
+    const na = claimsList().length + (ai && ai.cal[tk] && !(S.adv && S.adv[tk]) && advWindowOpen() ? 1 : 0);
+    const ba = $("#badgeAno"); if (ba) { ba.textContent = na || ""; ba.dataset.n = na; }
     const dc = dupCount(); const bd = $("#badgeDup"); const can = Math.floor(dc / SWAP_COST); bd.textContent = can || ""; bd.dataset.n = can;
   }
 
@@ -290,7 +384,8 @@
     current = view;
     $$(".tab").forEach((t) => t.classList.toggle("active", t.dataset.view === view));
     $$(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + view));
-    ({ hoy: renderHoy, album: renderAlbum, sobres: renderSobres, mas: renderMas })[view]();
+    checkMedals();
+    ({ hoy: renderHoy, album: renderAlbum, sobres: renderSobres, mas: renderMas, ano: renderAno })[view]();
     window.scrollTo({ top: 0 });
     try { history.replaceState(null, "", "#" + view); } catch {}
   }
@@ -301,17 +396,84 @@
   const DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
   function greeting() { const h = new Date().getHours(); return h < 6 ? "¡Buenas noches!" : h < 13 ? "¡Buenos días!" : h < 20 ? "¡Buenas tardes!" : "¡Buenas noches!"; }
 
+  /* ───────── Temporada: Adviento, Cuaresma, mayo, premios ───────── */
+  function advInfo(d = today()) { // el calendario se ve desde una semana antes hasta el Bautismo del Señor
+    const y = d.getMonth() === 0 ? d.getFullYear() - 1 : d.getFullYear();
+    const cal = ADV[y]; if (!cal) return null;
+    const keys = Object.keys(cal).sort();
+    if (d < addDays(parseD(keys[0]), -7) || d > baptism(y + 1)) return null;
+    return { y, cal, keys, got: keys.filter((k) => S.adv && S.adv[k]).length };
+  }
+  const advWindowOpen = () => { const h = new Date().getHours(); return h >= 5 && h < 7; };
+  function advOpenDay(k, why = "Calendario de Adviento 🕯️") {
+    const ai = advInfo(); if (!ai || !ai.cal[k]) return;
+    S.adv = S.adv || {}; if (S.adv[k]) return;
+    S.adv[k] = 1; save(); const n = ai.cal[k];
+    startOpening("adv", [n], { [n]: why });
+  }
+  const fullIn = (a, b) => (S.full || []).filter((k) => { const x = parseD(k); return x >= a && x <= b; }).length;
+  const lentSteps = (y) => Math.min(40, fullIn(addDays(easter(y), -46), addDays(easter(y), -1)));
+  const flowers = (y) => fullIn(new Date(y, 4, 1, 12), new Date(y, 4, 31, 12));
+  function claimsList(d = today()) {
+    const y = d.getFullYear(), out = [], md = `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const add = (id, kind, label) => { if (!(S.claims || {})[id]) out.push({ id, kind, label }); };
+    if (S.patron && BY_N.get(S.patron) && saintsOfDay(d).includes(S.patron)) add(`patron-${y}`, "S", `🙏 Hoy es la fiesta de tu santo patrono, ${BY_N.get(S.patron).short}. ¡Recoge tu sobre extra!`);
+    if (S.bday === md) add(`cumple-${y}`, "P", "🎂 ¡Feliz cumpleaños! Recoge tu sobre premium");
+    const ai = advInfo(d);
+    if (ai && d >= parseD(`${ai.y}-12-25`) && ai.got >= 20) add(`adv-${ai.y}`, "P", `🕯️ Premio del Calendario de Adviento (${ai.got} ventanas): sobre premium`);
+    if (ai && d >= parseD(`${ai.y + 1}-01-06`) && ai.got >= 1) add(`reyes-${ai.y + 1}`, "S", "👑 Los Reyes Magos te traen un sobre");
+    const E = easter(y);
+    if (d >= E && d <= addDays(E, 49) && lentSteps(y) >= 30) add(`cuaresma-${y}`, "P", "✝️ ¡Recorriste el Camino de Cuaresma! Recoge tu sobre premium");
+    if (((d.getMonth() === 4 && d.getDate() === 31) || d.getMonth() === 5) && flowers(y) >= 25) add(`corona-${y}`, "P", "🌸 Tu corona de flores para María está lista: sobre premium");
+    return out;
+  }
+  function doClaim(id) {
+    const c = claimsList().find((x) => x.id === id); if (!c) return;
+    S.claims = S.claims || {}; S.claims[id] = dkey(today());
+    if (c.kind === "P") S.ppacks = (S.ppacks || 0) + 1; else S.packs++;
+    save(); confetti(80); vibrate([30, 40, 60]); toast(c.kind === "P" ? "¡Sobre premium añadido! ✨" : "¡Sobre añadido!"); go("sobres");
+  }
+  const claimsHTML = () => claimsList().map((c) => `<div class="claim"><button class="btn btn-primary" data-claim="${c.id}">${esc(c.label)}</button></div>`).join("");
+  function advCTA(d = today()) {
+    const ai = advInfo(d); if (!ai) return "";
+    const k = dkey(d);
+    if (d < parseD(ai.keys[0])) return `<button class="season-note" data-goto="ano">🕯️ El ${parseD(ai.keys[0]).getDate()} de noviembre empieza el <b>Calendario de Adviento</b>: cada mañana, de 5:00 a 6:59, se abre una ventana con un cromo.</button>`;
+    if (!ai.cal[k] || (S.adv && S.adv[k])) return "";
+    if (advWindowOpen()) return `<div class="claim"><button class="btn btn-primary adv-btn" id="advOpen">🕯️ ¡Abre la ventana de hoy del Calendario de Adviento!</button></div>`;
+    if (new Date().getHours() < 5) return `<button class="season-note" data-goto="ano">🕯️ La ventana de hoy del Calendario de Adviento se abre a las 5:00.</button>`;
+    return `<button class="season-note" data-goto="ano">🕯️ La ventana de hoy se abría de 5:00 a 6:59. ¡Mañana madrugas! Si la perdiste, se puede recuperar con un código de la parroquia.</button>`;
+  }
+  function especialHTML(D) {
+    const es = especialHoy(); if (!es) return "";
+    if (D.esp) return `<div class="esp-band">💎 ${SECRETOS.has(es) ? "El cromo especial de hoy" : `«${esc(BY_N.get(es).short)}»`} ya va en tu sobre.</div>`;
+    return `<div class="esp-band">💎 ${SECRETOS.has(es) ? "<b>¡Hoy hay un cromo especial sorpresa!</b>" : `<b>Especial del día: ${esc(BY_N.get(es).short)}.</b>`} Cumple los 5 retos y sale seguro en tu sobre.</div>`;
+  }
+  function backupDue() {
+    if (ownedCount() < 30 || (S.backupSnooze || 0) > Date.now()) return false;
+    return Date.now() - (S.backupAt || S.firstSeen || 0) > (isStandalone() ? 60 : 30) * 864e5;
+  }
+  function doExport() {
+    const blob = new Blob([JSON.stringify({ app: "album-santos", v: 1, date: new Date().toISOString(), state: S })], { type: "application/json" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `album-santos-${S.name ? S.name.replace(/[^\wáéíóúñ-]+/gi, "_") + "-" : ""}${dkey(today())}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    S.backupAt = Date.now(); save();
+  }
+  const seasonBand = (d = today()) => { const t = T[seasonOf(d)]; return t ? `<button class="season-band" data-goto="ano"><span class="e">${t.e}</span><span class="tx"><small>${esc(t.tiempo)}</small><b>${esc(t.nombre)}</b></span><span class="go">›</span></button>` : ""; };
+
   function renderHoy() {
     const d = today(), D = dayState(d), done = D.done.length, total = D.retos.length;
     const sod = saintsOfDay(d), fest = bigFeast(d), k = dkey(d);
     const pct = Math.round((done / total) * 100);
+    const extraStreak = (S.graceAt === k ? " · usaste tu día de gracia" : "") + (isVacation(d) ? " · modo vacaciones 🏖️" : "");
     let html = `<section class="hero">
       <div class="date">${DIAS[d.getDay()]}, ${d.getDate()} de ${MESES[d.getMonth()]}</div>
-      <h1>${greeting()}</h1>
-      <p>${D.claimed ? "Hoy ya ganaste tu sobre. ¡Mañana hay cinco retos nuevos!" : "Cumple los 5 retos de hoy y gana un sobre de cromos."}</p>
+      <h1>${S.name ? greeting().slice(0, -1) + ", " + esc(S.name) + "!" : greeting()}</h1>
+      <p>${D.sobrio ? "Viernes Santo: hoy no hay sobres. Acompaña a Jesús con estos cinco retos." : D.claimed ? "Hoy ya ganaste tu sobre. ¡Mañana hay cinco retos nuevos!" : "Cumple los 5 retos de hoy y gana un sobre de cromos."}</p>
       <div class="progress-row"><div class="ring" style="--p:${pct}"><span>${done}/${total}</span></div>
-      <div class="txt"><b>${done === total ? "¡Retos cumplidos!" : `Te faltan ${total - done}`}</b><small>Racha: ${S.streak || 0} ${S.streak === 1 ? "día" : "días"} seguidos</small></div></div>
+      <div class="txt"><b>${done === total ? "¡Retos cumplidos!" : `Te faltan ${total - done}`}</b><small>Racha: ${S.streak || 0} ${S.streak === 1 ? "día" : "días"} seguidos${extraStreak}</small></div></div>
     </section>`;
+    html += seasonBand(d) + claimsHTML() + advCTA(d) + especialHTML(D);
+    if (backupDue()) html += `<div class="panel tip"><h3>💾 Guarda una copia de tu álbum</h3><p>Tu colección vive solo en este móvil. Guarda una copia por si cambias de móvil o se borran los datos del navegador.${isStandalone() ? "" : " Instalar la app también ayuda a que no se borre."}</p>
+      <div class="btn-row"><button class="btn btn-primary btn-small" id="bkNow">⬇️ Guardar copia</button><button class="btn btn-ghost btn-small" id="bkLater">Ahora no</button></div></div>`;
 
     if (sod.length) {
       html += `<h2 class="section">🕊️ Hoy celebramos</h2><div class="today-saints">` + sod.map((n) => { const s = BY_N.get(n);
@@ -329,12 +491,13 @@
         <span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>`;
     }).join("") + `</div>`;
 
-    if (done === total && !D.claimed) html += `<div class="claim"><button class="btn btn-primary" id="claimBtn">🎉 ¡Recoge tu sobre!</button></div>`;
+    if (done === total && !D.claimed && !D.sobrio) html += `<div class="claim"><button class="btn btn-primary" id="claimBtn">🎉 ¡Recoge tu sobre!</button></div>`;
+    if (done === total && D.sobrio) html += `<p class="note" style="text-align:center;font-size:14px">Gracias por acompañar hoy a Jesús. El domingo, ¡a celebrar la Pascua!</p>`;
     if (WEEKLY.length) {
       const W = weekState(), dl = 7 - ((d.getDay() + 6) % 7);
       html += `<h2 class="section">🌟 Reto de la semana</h2>
         <div class="weekly ${W.done ? "done" : ""}"><div class="wk-badge">Sobre premium</div>
-        <div class="wk-t">${esc(WEEKLY[W.i])}</div>
+        <div class="wk-t">${esc(W.t || WEEKLY[W.i])}</div>
         <div class="wk-foot"><small>${W.done ? "¡Cumplido! El lunes llega un reto nuevo." : dl === 1 ? "Último día: termina hoy, domingo" : `Tienes ${dl} días, hasta el domingo`}</small>
         ${W.done ? `<span class="wk-ok">✓ Hecho</span>` : `<button class="btn btn-primary btn-small" id="weeklyBtn">¡Lo cumplí!</button>`}</div></div>`;
     }
@@ -363,19 +526,20 @@
       // Un cromo suelto por cada reto cumplido (solo la primera vez)
       D.cards = D.cards || [];
       let gift = null;
-      if (i < 0 && !D.cards.includes(r.id)) {
+      if (i < 0 && !D.cards.includes(r.id) && !D.sobrio) {
         D.cards.push(r.id);
         if (r.s && !D.granted.includes(r.s)) { gift = { n: r.s, why: "Por tu reto" }; D.granted.push(r.s); }
         else gift = { n: drawRandom(), why: null };
       }
       save(); renderHoy();
       if (gift) setTimeout(() => startOpening("reto", [gift.n], gift.why ? { [gift.n]: gift.why } : {}), 350);
-      else if (D.done.length === D.retos.length && !D.claimed) { confetti(60); vibrate([30, 40, 30]); }
+      else if (D.done.length === D.retos.length && !D.claimed && !D.sobrio) { confetti(60); vibrate([30, 40, 30]); }
       return;
     }
     if (e.target.closest("#claimBtn")) {
       const D = dayState(); if (D.claimed) return;
       D.claimed = true; S.packs++;
+      const es = especialHoy(); if (es && !D.esp) { D.esp = es; S.espPend = es; }
       let extra = "";
       if (S.streak > 0 && S.streak % 7 === 0) { S.packs++; extra = " ¡Y uno extra por tu racha de 7 días!"; }
       save(); toast("¡Has ganado un sobre!" + extra); go("sobres"); return;
@@ -385,6 +549,10 @@
       W.done = true; S.ppacks = (S.ppacks || 0) + 1; save(); confetti(90); vibrate([30, 40, 60]);
       toast("¡Sobre premium ganado! ✨"); go("sobres"); return;
     }
+    const cl = e.target.closest("[data-claim]"); if (cl) return doClaim(cl.dataset.claim);
+    if (e.target.closest("#advOpen")) { if (advWindowOpen()) advOpenDay(dkey(today())); else renderHoy(); return; }
+    if (e.target.closest("#bkNow")) { doExport(); return renderHoy(); }
+    if (e.target.closest("#bkLater")) { S.backupSnooze = Date.now() + 7 * 864e5; save(); return renderHoy(); }
     if (e.target.closest("#feastBtn")) { S.feastBonus[dkey(today())] = true; S.packs++; save(); confetti(70); toast("¡Feliz fiesta! Sobre extra añadido"); go("sobres"); return; }
     if (e.target.closest("#swapBtn")) {
       const D = dayState(); const idx = D.retos.findIndex((r) => !D.done.includes(r.id) && r.c !== "santo");
@@ -402,9 +570,16 @@
 
   function markStreak() {
     const k = dkey(today());
+    S.full = S.full || [];
+    if (!S.full.includes(k)) { S.full.push(k); if (S.full.length > 800) S.full.shift(); } // días con los 5 retos (temporadas)
     if (S.lastDone === k) return;
-    const y = dkey(addDays(today(), -1));
-    S.streak = S.lastDone === y ? (S.streak || 0) + 1 : 1;
+    const gap = S.lastDone ? daysBetween(parseD(S.lastDone), parseD(k)) : 99;
+    let keep = gap === 1;
+    // Día de gracia: un día fallado por semana no rompe la racha
+    if (!keep && gap === 2 && !(S.graceAt && daysBetween(parseD(S.graceAt), parseD(k)) < 7)) { keep = true; S.graceAt = k; }
+    // Modo vacaciones (julio y agosto): la racha aguanta hasta 3 días sin jugar
+    if (!keep && isVacation(today()) && gap <= 4) keep = true;
+    S.streak = keep ? (S.streak || 0) + 1 : 1;
     S.lastDone = k;
   }
 
@@ -498,12 +673,16 @@
 
   /* ───────── Vista SOBRES ───────── */
   const packHTML = (kind = "normal") => {
-    const label = { premium: "Sobre premium", reto: "Cromo del reto", swap: "Canje", gift: "Regalo", trade: "De un amigo" }[kind] || "Sobre de cromos";
-    return `<div class="pack ${kind === "premium" ? "gold" : kind === "gift" || kind === "trade" ? "gold mini-pack" : kind === "reto" || kind === "swap" ? "mini-pack" : ""}"><div class="crimp t"></div><div class="crimp b"></div><div class="pk-in">${ICON_COVER}<b>Álbum de los Santos</b><small>${label}</small></div></div>`;
+    const label = { premium: "Sobre premium", reto: "Cromo del reto", swap: "Canje", gift: "Regalo", trade: "De un amigo", adv: "Calendario de Adviento", parroquia: "Parroquia" }[kind] || "Sobre de cromos";
+    return `<div class="pack ${kind === "premium" ? "gold" : kind === "gift" || kind === "trade" || kind === "adv" || kind === "parroquia" ? "gold mini-pack" : kind === "reto" || kind === "swap" ? "mini-pack" : ""}"><div class="crimp t"></div><div class="crimp b"></div><div class="pk-in">${ICON_COVER}<b>Álbum de los Santos</b><small>${label}</small></div></div>`;
   };
   const PACK_HTML = packHTML();
   function renderSobres() {
     const n = S.packs || 0, pp = S.ppacks || 0;
+    if (isGoodFriday(today())) {
+      $("#view-sobres").innerHTML = `<h1 class="title">Tus sobres</h1><div class="panel no-packs"><div class="big">✝️</div><h3>Viernes Santo</h3><p>Hoy no se abren sobres. Guarda los tuyos para el Domingo de Resurrección.</p></div>`;
+      return updateChrome();
+    }
     let html = `<h1 class="title">Tus sobres</h1><p class="subtitle">Cada sobre trae ${CARDS_PER_PACK} cromos al azar. Si es la fiesta de un santo, ¡sale seguro!</p>`;
     if (pp > 0) html += `<div class="packs-area"><div class="pack-stack" id="ppackStack"><div class="pk">${packHTML("premium")}</div></div>
         <div class="pack-count">✨ ${pp} ${pp === 1 ? "sobre premium" : "sobres premium"}</div>
@@ -522,6 +701,7 @@
     updateChrome();
   }
   $("#view-sobres").addEventListener("click", (e) => {
+    if (isGoodFriday(today())) return;
     if (e.target.closest("#openPremium") || e.target.closest("#ppackStack")) return startOpening("premium");
     if (e.target.closest("#openBtn") || e.target.closest("#packStack")) startOpening();
     const g = e.target.closest("[data-goto]"); if (g) go(g.dataset.goto);
@@ -597,7 +777,197 @@
     if (e.target.closest("#backBtn")) { closeOpening(); const D = dayState(); if (D.done.length === D.retos.length && !D.claimed) { confetti(60); vibrate([30, 40, 30]); } }
     if (e.target.closest("#toAlbumBtn")) { closeOpening(); filter = "todos"; go("album"); }
   });
-  function closeOpening() { $("#opening").classList.remove("open", "lit"); document.body.style.overflow = ""; opening = false; if (current === "sobres") renderSobres(); else if (current === "mas") renderMas(); else if (current === "hoy") renderHoy(); }
+  function closeOpening() { $("#opening").classList.remove("open", "lit"); document.body.style.overflow = ""; opening = false; checkMedals(); if (current === "sobres") renderSobres(); else if (current === "mas") renderMas(); else if (current === "hoy") renderHoy(); else if (current === "ano") renderAno(); }
+
+  /* ───────── Medallas ───────── */
+  function medalDefs() {
+    const L = [];
+    for (const sec of SECTIONS) {
+      const list = SANTOS.filter((s) => s.s === sec.id);
+      L.push({ id: "sec-" + sec.id, g: "Secciones del álbum", ico: sec.id === "especiales" ? "💎" : "📖", name: sec.name, desc: `Completa la sección (${list.length} cromos)`, ok: () => list.every((s) => has(s.n)), reward: sec.id === "especiales" ? "P" : "S" });
+    }
+    L.push({ id: "album", g: "Grandes metas", ico: "🏆", name: "Coleccionista de los Santos", desc: "Completa los 700 cromos numerados", ok: () => SANTOS.every((s) => s.n > 700 || has(s.n)), reward: "P" });
+    L.push({ id: "ano", g: "Grandes metas", ico: "🗓️", name: "Un año con los santos", desc: "Cumple los 5 retos al menos un día en cada una de las 7 temporadas", ok: () => new Set((S.full || []).map((k) => seasonOf(parseD(k)))).size >= 7, reward: "P" });
+    for (const [n, nm] of [[7, "Una semana"], [30, "Un mes entero"], [100, "Cien días"]]) L.push({ id: "racha-" + n, g: "Constancia", ico: "🔥", name: nm, desc: `Racha de ${n} días`, ok: () => (S.streak || 0) >= n });
+    L.push({ id: "amigo-1", g: "Constancia", ico: "🤝", name: "Buen amigo", desc: "Regala una repetida a un amigo", ok: () => (S.given || 0) >= 1 });
+    L.push({ id: "amigo-10", g: "Constancia", ico: "🎁", name: "Generoso", desc: "Regala 10 repetidas", ok: () => (S.given || 0) >= 10 });
+    L.push({ id: "parroquia", g: "Constancia", ico: "⛪", name: "De la parroquia", desc: "Escanea un código de la parroquia", ok: () => (S.events || []).length >= 1 });
+    for (const y of Object.keys(ADV).map(Number)) {
+      const got = () => Object.keys(ADV[y]).filter((k) => S.adv && S.adv[k]).length;
+      L.push({ id: `velad-${y}`, g: "Temporadas", ico: "🕯️", name: `Velad ${y}`, desc: "Abre 20 ventanas del Calendario de Adviento", ok: () => got() >= 20 });
+      L.push({ id: `velad-oro-${y}`, g: "Temporadas", ico: "🌟", name: `Velad de oro ${y}`, desc: "Abre todas las ventanas del Calendario de Adviento", ok: () => got() >= Object.keys(ADV[y]).length });
+    }
+    for (let y = 2027; y <= Math.max(2027, today().getFullYear()); y++) {
+      L.push({ id: `camino-${y}`, g: "Temporadas", ico: "✝️", name: `Camino de Cuaresma ${y}`, desc: "Recorre 30 pasos del Camino de 40 días", ok: () => lentSteps(y) >= 30 });
+      L.push({ id: `corona-${y}`, g: "Temporadas", ico: "🌸", name: `Corona de María ${y}`, desc: "Pon 25 flores en la corona de mayo", ok: () => flowers(y) >= 25 });
+      L.push({ id: `corona-oro-${y}`, g: "Temporadas", ico: "👑", name: `Corona completa ${y}`, desc: "Pon las 31 flores de mayo", ok: () => flowers(y) >= 31 });
+    }
+    return L;
+  }
+  function checkMedals() {
+    S.medals = S.medals || {};
+    const nuevas = [];
+    for (const m of medalDefs()) {
+      if (S.medals[m.id] || !m.ok()) continue;
+      S.medals[m.id] = dkey(today()); nuevas.push(m);
+      if (m.reward === "P") S.ppacks = (S.ppacks || 0) + 1; else if (m.reward === "S") S.packs = (S.packs || 0) + 1;
+    }
+    if (!nuevas.length) return;
+    save();
+    const m = nuevas[0];
+    setTimeout(() => toast(nuevas.length === 1 ? `🏅 ¡Nueva medalla: ${m.name}!${m.reward ? ` Te regala un ${m.reward === "P" ? "sobre premium" : "sobre"}.` : ""}` : `🏅 ¡${nuevas.length} medallas nuevas! Míralas en «Año».`, 4500), 500);
+  }
+  function medalsHTML() {
+    const L = medalDefs(), got = L.filter((m) => S.medals && S.medals[m.id]).length;
+    const groups = [...new Set(L.map((m) => m.g))];
+    return `<div class="panel"><h3>🏅 Mis medallas <small class="cnt">${got} de ${L.length}</small></h3><p>Completa secciones del álbum (cada una te regala un sobre), vive las temporadas y sé constante.</p>` +
+      groups.map((g) => { const ms = L.filter((m) => m.g === g), n = ms.filter((m) => S.medals && S.medals[m.id]).length;
+        return `<details class="medal-d" ${ms.length > 8 ? "" : "open"}><summary class="medal-g">${esc(g)} · ${n} de ${ms.length}</summary><div class="medals">${ms.map((m) => { const ok = S.medals && S.medals[m.id];
+        return `<div class="medal ${ok ? "got" : ""}" title="${esc(m.desc)}"><span class="mi">${ok ? m.ico : "🔒"}</span><b>${esc(m.name)}</b><small>${esc(m.desc)}</small></div>`; }).join("")}</div></details>`; }).join("") + `</div>`;
+  }
+
+  /* ───────── Vista AÑO (temporada) ───────── */
+  function advGridHTML(ai) {
+    const tk = dkey(today()), open = advWindowOpen(), first = parseD(ai.keys[0]);
+    const cells = ai.keys.map((k) => {
+      const dd = parseD(k), n = ai.cal[k], got = S.adv && S.adv[k];
+      if (got) return `<div class="adv-cell got" data-open="${n}">${cardHTML(n)}<span class="d">${dd.getDate()}</span></div>`;
+      if (k === tk) return `<button class="adv-cell today ${open ? "glow" : ""}" ${open ? 'data-advopen="1"' : ""}><span class="d">${dd.getDate()}</span><small>${open ? "¡Ábrela!" : "Hoy"}</small></button>`;
+      if (k < tk) return `<button class="adv-cell lost" ${S.advRec ? `data-advrec="${k}"` : ""}><span class="d">${dd.getDate()}</span><small>${S.advRec ? "Recuperar" : "Perdida"}</small></button>`;
+      return `<div class="adv-cell closed"><span class="d">${dd.getDate()}</span><small>${MESES[dd.getMonth()].slice(0, 3)}</small></div>`;
+    }).join("");
+    return `<div class="panel adv"><h3>🕯️ Calendario de Adviento</h3><p>Del ${first.getDate()} de ${MESES[first.getMonth()]} a Navidad. Cada mañana, <b>de 5:00 a 6:59</b>, se abre la ventana del día con un cromo. Con 20 ventanas, sobre premium en Navidad; y el día de Reyes, otro regalo.</p>
+      <div class="adv-grid">${cells}</div><p class="note">Llevas ${ai.got} de ${ai.keys.length} ventanas.${S.advRec ? ` Puedes recuperar ${S.advRec} ${S.advRec === 1 ? "ventana perdida" : "ventanas perdidas"}: tócala.` : " ¿Perdiste una? Se recupera con un código de la parroquia."}</p></div>`;
+  }
+  function caminoHTML(y) {
+    const E = easter(y), ash = addDays(E, -46), st = lentSteps(y), d = today();
+    return `<div class="panel camino"><h3>✝️ Camino de 40 días</h3><p>${d < ash ? `Empieza el Miércoles de Ceniza, ${ash.getDate()} de ${MESES[ash.getMonth()]}. ` : ""}Cada día de Cuaresma con los 5 retos cumplidos avanzas un paso. Con 30 pasos, sobre premium el Domingo de Resurrección.</p>
+      <div class="steps">${Array.from({ length: 40 }, (_, i) => `<i class="${i < st ? "on" : ""}"></i>`).join("")}<span class="goal">🌅</span></div><p class="note">${st} de 40 pasos.</p></div>`;
+  }
+  function coronaHTML(y) {
+    const f = flowers(y);
+    const dots = Array.from({ length: 31 }, (_, i) => { const a = (i / 31) * Math.PI * 2 - Math.PI / 2;
+      return `<span class="fl ${i < f ? "on" : ""}" style="left:${(50 + 42 * Math.cos(a)).toFixed(1)}%;top:${(50 + 42 * Math.sin(a)).toFixed(1)}%">${i < f ? "🌸" : ""}</span>`; }).join("");
+    return `<div class="panel corona"><h3>🌸 Corona de flores para María</h3><p>En mayo, cada día con los 5 retos cumplidos pones una flor. Con 25 flores, sobre premium el 31 de mayo.</p><div class="crown">${dots}<span class="mid">${f}<small>de 31</small></span></div></div>`;
+  }
+  function especialesHTML(y) {
+    const d = today();
+    const list = [...especialesDelAno(y), ...especialesDelAno(y + 1)].filter((x) => x.d >= d && !SECRETOS.has(x.n)).slice(0, 6);
+    if (!list.length) return "";
+    return `<div class="panel"><h3>💎 Especiales del año</h3><p>El día de su fiesta, quien cumple los 5 retos se lleva su cromo especial seguro.</p><div class="esp-list">${list.map((x) =>
+      `<div class="esp-row ${has(x.n) ? "got" : ""}"><span class="dt">${x.d.getDate()} ${MESES[x.d.getMonth()].slice(0, 3)}</span><span class="nm">${esc(BY_N.get(x.n).short)}</span><span>${has(x.n) ? "✓ Lo tienes" : ""}</span></div>`).join("")}</div></div>`;
+  }
+  function patronHTML() {
+    const p = S.patron && BY_N.get(S.patron);
+    return `<div class="panel"><h3>🙏 Mi santo patrono</h3>${p ? `<div class="patron"><div class="mini">${cardHTML(p.n)}</div><div><b>${esc(p.short)}</b><small>${esc(p.feast || "")}</small></div></div>` : `<p>Elige tu santo: el de tu nombre, el de tu bautismo o el que quieras. En su fiesta tendrás sobre extra.</p>`}
+      <p>${S.bday ? `Tu cumpleaños: ${+S.bday.slice(3)} de ${MESES[+S.bday.slice(0, 2) - 1]}. Ese día te espera un sobre premium.` : "Dinos tu cumpleaños y ese día te espera un sobre premium."}</p>
+      <button class="btn btn-ghost btn-small" id="patronEdit">${p || S.bday || S.name ? "✏️ Cambiar mis datos" : "🙏 Elegir mi santo"}</button></div>`;
+  }
+  function diplomaHTML() {
+    const done = SANTOS.filter((s) => s.n <= 700 && has(s.n)).length;
+    return `<div class="panel"><h3>🏆 Diploma de Coleccionista</h3>${done >= 700 ? `<p>¡Completaste el álbum! Imprime tu diploma y llévalo a la parroquia.</p><button class="btn btn-primary btn-small" id="diplomaBtn">🖨️ Ver mi diploma</button>`
+      : `<p>Cuando completes los 700 cromos numerados, aquí tendrás tu diploma para llevarlo a la parroquia. Llevas ${done} de 700.</p><div class="meter"><i style="width:${(done / 7).toFixed(1)}%"></i></div>`}</div>`;
+  }
+  function renderAno() {
+    const d = today(), y = d.getFullYear(), E = easter(y), t = T[seasonOf(d)] || {};
+    let h = `<h1 class="title">${t.e || ""} ${esc(t.nombre || "Año")}</h1><p class="subtitle">${esc(t.tiempo || "")}. ${esc(t.lema || "")}</p>`;
+    h += claimsHTML();
+    const ai = advInfo(d); if (ai) h += advGridHTML(ai);
+    if (d >= addDays(E, -53) && d <= addDays(E, 49)) h += caminoHTML(y);
+    if ((d.getMonth() === 3 && d.getDate() >= 24) || d.getMonth() === 4 || d.getMonth() === 5) h += coronaHTML(y);
+    if (isVacation(d)) h += `<div class="panel"><h3>🏖️ Modo vacaciones</h3><p>En julio y agosto tu racha aguanta aunque pases hasta 3 días sin jugar, y hay retos de verano. ¡Descansa con Dios!</p></div>`;
+    h += `<div class="panel"><h3>⛪ Código de la parroquia</h3><p>En Misa, en catequesis o en las actividades de la parroquia, a veces habrá un código QR. Escanéalo y llévate un premio.</p><button class="btn btn-primary btn-small" id="parishScan">📷 Escanear código de la parroquia</button></div>`;
+    h += especialesHTML(y) + medalsHTML() + patronHTML() + diplomaHTML();
+    h += `<div class="panel"><h3>📆 Fechas en tu calendario</h3><p>Descarga las fechas del año (fiestas con sobre extra, cromos especiales, Calendario de Adviento, tu cumpleaños y tu santo) para que tu móvil te las recuerde.</p><button class="btn btn-ghost btn-small" id="icsBtn">📆 Añadir fechas a mi calendario</button></div>`;
+    $("#view-ano").innerHTML = h;
+    updateChrome();
+  }
+  $("#view-ano").addEventListener("click", (e) => {
+    const c = e.target.closest("[data-claim]"); if (c) return doClaim(c.dataset.claim);
+    if (e.target.closest("[data-advopen]")) { if (advWindowOpen()) advOpenDay(dkey(today())); else renderAno(); return; }
+    const r = e.target.closest("[data-advrec]");
+    if (r) { if ((S.advRec || 0) <= 0 || (S.adv && S.adv[r.dataset.advrec])) return; S.advRec--; save(); return advOpenDay(r.dataset.advrec, "Ventana recuperada ⛪"); }
+    if (e.target.closest("#parishScan")) return openParish();
+    if (e.target.closest("#patronEdit")) return openPerfil();
+    if (e.target.closest("#diplomaBtn")) return openDiploma();
+    if (e.target.closest("#icsBtn")) return icsDownload();
+    const o = e.target.closest("[data-open]"); if (o) { const n = +o.dataset.open; if (has(n)) openViewer(n, [n]); }
+  });
+
+  /* ───────── Mis datos: nombre, cumpleaños y santo patrono ───────── */
+  function openPerfil() {
+    openTrade("perfil");
+    const [bm, bd] = S.bday ? S.bday.split("-").map(Number) : [0, 0];
+    tradeBody().innerHTML = `<h2>Mis datos</h2>
+      <label class="fld"><span>Tu nombre (sale en el saludo y en el diploma)</span><input class="inp" id="pfName" maxlength="30" value="${esc(S.name || "")}" autocomplete="off"></label>
+      <div class="fld"><span>Tu cumpleaños</span><div class="row2"><select class="inp" id="pfDay"><option value="">Día</option>${Array.from({ length: 31 }, (_, i) => `<option ${bd === i + 1 ? "selected" : ""}>${i + 1}</option>`).join("")}</select>
+        <select class="inp" id="pfMonth"><option value="">Mes</option>${MESES.map((m, i) => `<option value="${i + 1}" ${bm === i + 1 ? "selected" : ""}>${m}</option>`).join("")}</select></div></div>
+      <div class="fld"><span>Tu santo patrono</span><input class="inp" id="pfQ" type="search" placeholder="Busca por nombre" autocomplete="off"></div>
+      <div class="pf-list" id="pfList"></div>
+      <button class="btn btn-primary btn-block" id="pfSave">Guardar</button>`;
+    tradeState.pick = S.patron || null; renderPfList("");
+  }
+  function renderPfList(q) {
+    const norm = (t) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+    const nq = norm(q);
+    const list = q ? SANTOS.filter((s) => !s.e && norm(s.name + " " + s.short).includes(nq)).slice(0, 40) : tradeState.pick ? [BY_N.get(tradeState.pick)] : [];
+    $("#pfList").innerHTML = list.map((s) => `<button class="pf-item ${tradeState.pick === s.n ? "on" : ""}" data-pf="${s.n}"><span>${s.n}</span>${esc(s.short)}${tradeState.pick === s.n ? " ✓" : ""}</button>`).join("") || (q ? `<p class="note">No encontré ningún santo con ese nombre.</p>` : "");
+  }
+  function savePerfil() {
+    S.name = $("#pfName").value.trim().slice(0, 30);
+    const dd = +$("#pfDay").value, mm = +$("#pfMonth").value;
+    S.bday = dd && mm ? `${pad(mm)}-${pad(dd)}` : null;
+    S.patron = tradeState.pick || null;
+    const me = FAM.list.find((p) => p.id === FAM.cur); if (me && S.name) { me.name = S.name; saveFam(); }
+    save(); closeTrade(); toast("¡Guardado!"); go(current);
+  }
+
+  /* ───────── Diploma ───────── */
+  function openDiploma() {
+    openTrade("diploma");
+    const f = S.medals && S.medals.album ? parseD(S.medals.album) : today();
+    tradeBody().innerHTML = `<div class="diploma" id="diplomaDoc"><div class="dp-in"><small>Parroquia de Santa Lucía · Maracaibo</small><h2>Diploma</h2><p>Se otorga a</p>
+      <div class="dp-name">${esc(S.name || "______________________")}</div><p>por completar el <b>Álbum de los Santos</b>,<br>cumpliendo cada día sus retos de vida de fe.</p>
+      <p class="dp-date">${f.getDate()} de ${MESES[f.getMonth()]} de ${f.getFullYear()}</p><p class="dp-q">«Sed santos, porque yo soy santo» (1 Pe 1,16)</p></div></div>
+      ${S.name ? "" : `<p class="note">Pon tu nombre en «Mis datos» para que salga en el diploma.</p>`}
+      <button class="btn btn-primary btn-block" id="printDp" style="margin-top:14px">🖨️ Imprimir</button><p class="note">Llévalo a la parroquia: ¡te espera un reconocimiento!</p>`;
+  }
+
+  /* ───────── Fechas en el calendario del móvil (.ics) ───────── */
+  function icsDownload() {
+    const d0 = today(), ymd = (d) => dkey(d).replace(/-/g, ""), ie = (t) => String(t).replace(/[\\,;]/g, (m) => "\\" + m);
+    const L = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Album de los Santos//ES", "CALSCALE:GREGORIAN", "X-WR-CALNAME:Álbum de los Santos"];
+    let uid = 0;
+    const ev = (d, title, desc, time) => {
+      L.push("BEGIN:VEVENT", `UID:santos-${ymd(d)}-${uid++}@album-santos`, `DTSTAMP:${ymd(d0)}T000000Z`,
+        ...(time ? [`DTSTART:${ymd(d)}T${time[0]}00`, `DTEND:${ymd(d)}T${time[1]}00`] : [`DTSTART;VALUE=DATE:${ymd(d)}`, `DTEND;VALUE=DATE:${ymd(addDays(d, 1))}`]),
+        `SUMMARY:${ie(title)}`, `DESCRIPTION:${ie(desc)}`, ...(time ? ["BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${ie(title)}`, "TRIGGER:PT0M", "END:VALARM"] : []), "END:VEVENT");
+    };
+    for (let i = 0; i < 366; i++) {
+      const d = addDays(d0, i), k = dkey(d), y = d.getFullYear(), E = easter(y);
+      const f = bigFeast(d); if (f) ev(d, `🎁 ${f}`, "Fiesta grande: sobre extra en el Álbum de los Santos");
+      const es = especialesDelAno(y).find((x) => same(x.d, d)); if (es && !SECRETOS.has(es.n)) ev(d, `💎 Especial: ${BY_N.get(es.n).short}`, "Cumple los 5 retos y su cromo especial sale seguro");
+      if (ADV[y] && ADV[y][k]) ev(d, "🕯️ Calendario de Adviento", "Abre el Álbum de los Santos entre las 5:00 y las 6:59 para abrir la ventana del día", ["0500", "0700"]);
+      if (same(d, addDays(E, -46))) ev(d, "✝️ Empieza el Camino de Cuaresma", "40 pasos hasta la Pascua en el Álbum de los Santos");
+      if (d.getMonth() === 4 && d.getDate() === 1) ev(d, "🌸 Corona de flores para María", "Cada día de mayo con los 5 retos cumplidos, una flor");
+      if (S.bday && k.slice(5) === S.bday) ev(d, "🎂 Mi cumpleaños", "Sobre premium de regalo en el Álbum de los Santos");
+      if (S.patron && BY_N.get(S.patron) && saintsOfDay(d).includes(S.patron)) ev(d, `🙏 Fiesta de ${BY_N.get(S.patron).short}`, "Fiesta de mi santo patrono: sobre extra");
+    }
+    L.push("END:VCALENDAR");
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([L.join("\r\n")], { type: "text/calendar" })); a.download = "album-santos-fechas.ics"; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+    toast("Abre el archivo descargado para añadir las fechas a tu calendario", 4500);
+  }
+
+  /* ───────── Canje dirigido (cuando faltan menos de 100) ───────── */
+  const SWAP_SEC_COST = 20;
+  const missingSwappable = (sec = null) => SANTOS.filter((s) => !has(s.n) && !locked(s) && !s.e && (!sec || s.s === sec));
+  function openSecSwap() {
+    openTrade("sec");
+    const secs = SECTIONS.map((sec) => ({ sec, m: missingSwappable(sec.id).length })).filter((x) => x.m);
+    tradeBody().innerHTML = `<h2>Elige la sección</h2><p class="install-sub">Cambias ${SWAP_SEC_COST} repetidas por un cromo que te falte de la sección que elijas.</p>
+      <div class="pf-list">${secs.map((x) => `<button class="pf-item" data-swapsec="${x.sec.id}"><span>${x.m}</span>${esc(x.sec.name)}</button>`).join("")}</div>`;
+  }
 
   /* ───────── Vista MÁS / REPETIDAS ───────── */
   function renderMas() {
@@ -607,11 +977,13 @@
       <div class="panel"><h3>Canje</h3><p>Tienes <b>${dc}</b> ${dc === 1 ? "repetida" : "repetidas"}. ${own >= TOTAL ? "¡Ya completaste el álbum!" : ""}</p>
       <div class="meter"><i style="width:${Math.min(100, ((dc % SWAP_COST) / SWAP_COST) * 100 + (dc >= SWAP_COST ? 100 : 0))}%"></i></div>
       <button class="btn btn-primary btn-block" id="swapCards" ${dc >= SWAP_COST && own < TOTAL ? "" : "disabled"}>Cambiar ${SWAP_COST} repetidas por 1 nuevo</button>
+      ${(() => { const m = missingSwappable().length; return m > 0 && m < 100 ? `<button class="btn btn-dark btn-block" id="swapSec" style="margin-top:10px" ${dc >= SWAP_SEC_COST ? "" : "disabled"}>🎯 Elegir sección: ${SWAP_SEC_COST} repetidas por 1 cromo</button><p class="note">Te faltan menos de 100: ahora puedes elegir de qué sección será tu cromo.</p>` : ""; })()}
       ${dups.length ? `<div class="dups">${dups.map((s) => `<div class="slot has" data-n="${s.n}">${cardHTML(s.n)}<span class="count">×${S.owned[s.n]}</span></div>`).join("")}</div>` : `<p class="note">Aún no tienes repetidas.</p>`}</div>`;
 
     const pend = pendingGifts().length;
     html += `<div class="panel"><h3>Intercambia con tus amigos</h3><p>Pasa tus repetidas de un móvil a otro con un código QR. Cada código sirve una sola vez.</p>
       <div class="btn-row"><button class="btn btn-primary btn-small" id="tradeGive" ${dups.length ? "" : "disabled"}>📤 Regalar una repetida</button><button class="btn btn-dark btn-small" id="tradeGet">📥 Recibir un cromo</button></div>
+      <div class="btn-row" style="margin-top:10px"><button class="btn btn-ghost btn-small" id="buscoBtn">🔎 Mi lista de busco</button><button class="btn btn-ghost btn-small" id="buscoScan">📷 Leer la lista de un amigo</button></div>
       ${pend ? `<button class="btn btn-ghost btn-small" id="tradePend" style="margin-top:10px">⏳ Regalos sin confirmar (${pend})</button>` : ""}</div>`;
 
     html += `<div class="panel"><h3>Tu avance por secciones</h3><div class="sec-progress">${SECTIONS.map((sec) => {
@@ -619,6 +991,9 @@
       return `<div class="r"><span>${esc(sec.name)}</span><span>${got}/${tot}</span><div class="bar s-${secC(sec.id)}"><i style="width:${(got / tot) * 100}%;background:var(--c1)"></i></div></div>`;
     }).join("")}</div></div>`;
 
+    html += `<div class="panel"><h3>👨‍👩‍👧 Álbumes de la familia</h3><p>Varios álbumes en el mismo móvil, por ejemplo para hermanos que no tienen móvil. Cada uno tiene su colección, sus retos y su racha.</p>
+      <div class="fam">${FAM.list.map((p) => `<div class="fam-row ${p.id === FAM.cur ? "on" : ""}"><span>${esc(p.name || (p.id ? "Álbum " + (p.id + 1) : "Álbum principal"))}${p.id === FAM.cur ? " · <b>en uso</b>" : ""}</span>${p.id === FAM.cur ? "" : `<button class="btn btn-ghost btn-small" data-fam="${p.id}">Abrir</button>`}</div>`).join("")}</div>
+      <div class="btn-row" style="margin-top:10px"><input id="famName" class="inp" placeholder="Nombre del nuevo álbum" maxlength="20" style="flex:1;min-width:150px"><button class="btn btn-dark btn-small" id="famAdd">➕ Añadir</button></div></div>`;
     html += `<div class="panel"><h3>Instálala en tu móvil</h3><p>En Android (Chrome): menú ⋮ → «Instalar aplicación». En iPhone (Safari): botón Compartir → «Añadir a pantalla de inicio». Funciona sin conexión.</p>
       <button class="btn btn-dark btn-small" id="installBtn" style="display:none">Instalar ahora</button></div>
       <div class="panel"><h3>Copia de seguridad</h3><p>Tu colección se guarda solo en este dispositivo. Descarga una copia para no perderla o pasarla a otro móvil.</p>
@@ -631,14 +1006,22 @@
   $("#view-mas").addEventListener("click", (e) => {
     const sl = e.target.closest(".slot.has"); if (sl) return openViewer(+sl.dataset.n, $$(".dups .slot").map((x) => +x.dataset.n));
     if (e.target.closest("#swapCards")) return doSwap();
+    if (e.target.closest("#swapSec")) return openSecSwap();
+    if (e.target.closest("#buscoBtn")) return showBusco();
+    if (e.target.closest("#buscoScan")) { openTrade("busco"); return scanBusco(); }
+    const fm = e.target.closest("[data-fam]"); if (fm) { FAM.cur = +fm.dataset.fam; saveFam(); location.reload(); return; }
+    if (e.target.closest("#famAdd")) {
+      const nm = $("#famName").value.trim(); if (!nm) return toast("Escribe el nombre del nuevo álbum");
+      if (FAM.list.length === 1 && !FAM.list[0].name && S.name) FAM.list[0].name = S.name;
+      const id = Math.max(...FAM.list.map((p) => p.id)) + 1;
+      FAM.list.push({ id, name: nm }); FAM.cur = id; saveFam();
+      try { localStorage.setItem(`${KEY0}-p${id}`, JSON.stringify({ name: nm })); } catch {}
+      location.reload(); return;
+    }
     if (e.target.closest("#tradeGive")) return openTrade("dar");
     if (e.target.closest("#tradeGet")) return openTrade("recibir");
     if (e.target.closest("#tradePend")) { openTrade("pend"); return showPending(); }
-    if (e.target.closest("#exportBtn")) {
-      const blob = new Blob([JSON.stringify({ app: "album-santos", v: 1, date: new Date().toISOString(), state: S })], { type: "application/json" });
-      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `album-santos-${dkey(today())}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-      return;
-    }
+    if (e.target.closest("#exportBtn")) return doExport();
     if (e.target.closest("#resetBtn")) {
       const b = e.target.closest("#resetBtn");
       if (!b.dataset.sure) { b.dataset.sure = "1"; b.textContent = "Toca otra vez para confirmar"; setTimeout(() => { b.dataset.sure = ""; b.textContent = "Borrar mi álbum"; }, 4000); return; }
@@ -650,11 +1033,11 @@
     if (e.target.id !== "importInp" || !e.target.files[0]) return;
     e.target.files[0].text().then((t) => { const j = JSON.parse(t); if (j.app !== "album-santos") throw 0; const keep = { dev: S.dev, inbox: S.inbox, usedReq: S.usedReq, outbox: S.outbox }; S = Object.assign(fresh(), j.state, keep); save(); toast("Copia cargada"); renderMas(); }).catch(() => toast("Ese archivo no es una copia válida"));
   });
-  function doSwap() {
-    if (dupCount() < SWAP_COST) return;
-    const missing = SANTOS.filter((s) => !has(s.n) && !locked(s) && !s.e); if (!missing.length) return toast("Los cromos que te faltan no se pueden conseguir por canje");
+  function doSwap(cost = SWAP_COST, sec = null) {
+    if (dupCount() < cost) return;
+    const missing = missingSwappable(sec); if (!missing.length) return toast("Los cromos que te faltan no se pueden conseguir por canje");
     // quitamos repetidas empezando por las que más se repiten
-    let left = SWAP_COST;
+    let left = cost;
     while (left > 0) {
       const top = SANTOS.filter((s) => (S.owned[s.n] || 0) > 1).sort((a, b) => S.owned[b.n] - S.owned[a.n] || a.p - b.p)[0];
       S.owned[top.n]--; left--;
@@ -690,7 +1073,7 @@
     $("#installBody").innerHTML = h;
   }
   function openInstall() { renderInstall(); $("#install").classList.add("open"); }
-  function closeInstall() { $("#install").classList.remove("open"); if (pendingToast) { toast(pendingToast); pendingToast = null; } try { localStorage.setItem(KEY + "-noinstall", "1"); } catch {} }
+  function closeInstall() { $("#install").classList.remove("open"); if (pendingToast) { toast(pendingToast); pendingToast = null; } try { localStorage.setItem(KEY0 + "-noinstall", "1"); } catch {} }
   $("#install").addEventListener("click", async (e) => {
     if (e.target.closest("#installNow") && deferredInstall) { deferredInstall.prompt(); const r = await deferredInstall.userChoice.catch(() => ({})); deferredInstall = null; if (r.outcome === "accepted") { closeInstall(); toast("¡Instalada! Búscala en tu pantalla de inicio"); } else renderInstall(); return; }
     if (e.target.closest("#installLater") || e.target === $("#install")) closeInstall();
@@ -699,7 +1082,7 @@
   window.addEventListener("appinstalled", () => { closeInstall(); });
   // El enlace …/?instalar abre directamente la hoja; en la primera visita también aparece
   const wantsInstall = /[?&]instalar\b/.test(location.search);
-  let dismissed = false; try { dismissed = !!localStorage.getItem(KEY + "-noinstall"); } catch {}
+  let dismissed = false; try { dismissed = !!localStorage.getItem(KEY0 + "-noinstall"); } catch {}
   if (wantsInstall) try { history.replaceState(null, "", location.pathname + location.hash); } catch {}
   if (!isStandalone() && (wantsInstall || !dismissed)) setTimeout(openInstall, wantsInstall ? 200 : 1600);
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
@@ -714,13 +1097,38 @@
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && dkey(today()) !== lastKey) { lastKey = dkey(today()); go(current); } });
 
   /* ───────── Novedades (se muestran una vez a quien ya usaba la app) ───────── */
-  const NEWS_V = 3;
+  // Cada novedad tiene un número y, si hace falta, la fecha desde la que se anuncia
+  const NEWS = [
+    { v: 2, e: "📖", b: "200 cromos nuevos", t: "Llega la segunda parte del álbum: del 501 al 700, con más advocaciones, santos y beatos." },
+    { v: 2, e: "💎", b: "Cromos especiales", t: "Una sección nueva con imágenes de la Parroquia de Santa Lucía de Maracaibo. Son premium y muy difíciles: solo 1 de cada 100 cromos es especial." },
+    { v: 2, e: "🎁", b: "Un regalo para ti", t: "Te regalamos el cromo especial de Nuestra Señora de la Natividad." },
+    { v: 2, e: "🤝", b: "Intercambia repetidas", t: "Pasa tus repetidas a otro móvil con un código QR. Cada código sirve una sola vez. Lo tienes en Repetidas." },
+    { v: 3, e: "☀️", b: "Regalo de la mañana", t: "Cada día, si abres la app por la mañana (antes de las 12), te espera un cromo de regalo." },
+    { v: 4, e: "📅", b: "Nueva pestaña «Año»", t: "Cada tiempo litúrgico trae su meta, sus premios y su cromo especial. Ahí tienes también tus medallas y tu santo patrono." },
+    { v: 4, e: "🕯️", b: "Calendario de Adviento", t: "Del 29 de noviembre a Navidad: entra en la app entre las 5 y las 7 de la mañana y abre la ventana del día. ¡Cada ventana trae un cromo!" },
+    { v: 4, e: "🏅", b: "Medallas", t: "Completa secciones del álbum y gana medallas. ¡Cada sección completa te regala un sobre!" },
+    { v: 4, e: "🙏", b: "Tu santo y tu cumpleaños", t: "Elige tu santo patrono: en su fiesta tendrás sobre extra. Y en tu cumpleaños, un sobre premium." },
+    { v: 4, e: "💎", b: "El especial del mes", t: "Casi cada mes, el día de su fiesta, un cromo especial sale seguro a quien cumpla los 5 retos." },
+    { v: 4, e: "⛪", b: "Códigos de la parroquia", t: "En Misa, en catequesis y en las actividades verás a veces un código QR: escanéalo y gana premios." },
+    { v: 4, e: "🌱", b: "Día de gracia", t: "Si fallas un día, tu racha no se rompe (una vez por semana)." },
+    { v: 4, e: "🔎", b: "Lista de busco y álbumes de la familia", t: "Enseña con un QR qué cromos te faltan, y lleva varios álbumes en un mismo móvil. Lo tienes en Repetidas." },
+    { v: 5, from: "2027-02-10", e: "✝️", b: "Camino de 40 días", t: "Empieza la Cuaresma: cada día con los 5 retos cumplidos avanzas un paso hacia la Pascua. Con 30 pasos, sobre premium el Domingo de Resurrección." },
+    { v: 6, from: "2027-03-28", e: "🌅", b: "¡Feliz Pascua!", t: "Si recorriste el Camino de Cuaresma, recoge tu sobre premium. Y cuando te falten menos de 100 cromos, podrás elegir la sección en el canje." },
+    { v: 7, from: "2027-05-01", e: "🌸", b: "Corona de flores para María", t: "En mayo, cada día con los 5 retos pones una flor en la corona de la Virgen. Con 25 flores, sobre premium." },
+    { v: 8, from: "2027-07-01", e: "🏖️", b: "Modo vacaciones", t: "En julio y agosto tu racha aguanta aunque pases hasta 3 días sin jugar, y hay retos de verano." },
+    { v: 9, from: "2027-09-01", e: "🎒", b: "¡Volvemos!", t: "Empieza el curso: invita a tu familia y a tus amigos de catequesis. Puedes llevar varios álbumes en un mismo móvil." },
+  ];
+  const newsNow = () => NEWS.filter((x) => !x.from || dkey(today()) >= x.from);
   function maybeNews() {
-    if (!S.welcome || (S.news || 0) >= NEWS_V) { S.news = NEWS_V; save(); return; }
-    $$("#news .news-list li").forEach((li) => { li.style.display = +li.dataset.v > (S.news || 0) ? "" : "none"; }); // solo lo que aún no vio
-    setTimeout(() => { if (!$("#install").classList.contains("open")) $("#news").classList.add("open"); else maybeNews._wait = true; }, 900);
+    if (S.newsSeen == null) S.newsSeen = NEWS.filter((x) => x.v <= (S.news || 0)).map((x) => x.v); // migración del aviso anterior
+    const seen = new Set(S.newsSeen), nuevas = newsNow().filter((x) => !seen.has(x.v));
+    if (!S.welcome) { S.newsSeen = [...new Set([...S.newsSeen, ...newsNow().map((x) => x.v)])]; save(); return; }
+    if (!nuevas.length) return;
+    $("#news .news-list").innerHTML = nuevas.map((x) => `<li><span class="e">${x.e}</span><span><b>${esc(x.b)}</b>${esc(x.t)}</span></li>`).join("");
+    maybeNews._v = nuevas.map((x) => x.v);
+    setTimeout(() => { if (!$("#install").classList.contains("open")) $("#news").classList.add("open"); }, 900);
   }
-  $("#news").addEventListener("click", (e) => { if (e.target.closest("#newsOk") || e.target === $("#news")) { $("#news").classList.remove("open"); S.news = NEWS_V; save(); } });
+  $("#news").addEventListener("click", (e) => { if (e.target.closest("#newsOk") || e.target === $("#news")) { $("#news").classList.remove("open"); S.newsSeen = [...new Set([...(S.newsSeen || []), ...(maybeNews._v || [])])]; save(); } });
 
   /* ───────── Regalo de promoción: Nuestra Señora de la Natividad (especial E) ───────── */
   const PROMO = (SANTOS.find((s) => s.l === "E") || {}).n;
@@ -729,7 +1137,7 @@
     const busy = () => opening || ["#install", "#news", "#trade"].some((id) => $(id).classList.contains("open"));
     const tryIt = () => {
       const d = new Date(), k = dkey(today());
-      if (d.getHours() < 5 || d.getHours() >= 12 || S.morning === k) return;
+      if (d.getHours() < 5 || d.getHours() >= 12 || S.morning === k || isGoodFriday(today())) return;
       if (busy() || (PROMO && !S.promoE)) return setTimeout(tryIt, 1200);
       S.morning = k;
       const n = drawRandom(Math.random, (s) => !s.p && !s.e && !locked(s)); // nunca premium ni especial
@@ -783,9 +1191,9 @@
   function openTrade(mode, req = null) {
     tradeState = { mode, req };
     $("#trade").classList.add("open"); document.body.style.overflow = "hidden";
-    if (mode === "recibir") showRequest(); else if (mode !== "pend") pickDup();
+    if (mode === "recibir") showRequest(); else if (mode === "dar") pickDup();
   }
-  function closeTrade() { stopScan(); $("#trade").classList.remove("open"); document.body.style.overflow = ""; tradeState = null; if (current === "mas") renderMas(); }
+  function closeTrade() { stopScan(); $("#trade").classList.remove("open"); document.body.style.overflow = ""; tradeState = null; if (current === "mas") renderMas(); else if (current === "ano") renderAno(); }
   function showRequest() {
     S.inbox = (S.inbox || []).filter((x) => Date.now() - x.t < 30 * 864e5).slice(-20);
     let mine = S.inbox[S.inbox.length - 1];
@@ -870,6 +1278,7 @@
     startOpening("trade", [n], { [n]: "¡Regalo especial!" });
   }
   function onScanGift(txt) {
+    if (RE_EVT.test(txt)) return onScanParish(txt);
     const ad = RE_ADMIN.exec(txt); if (ad) return onAdminGift(ad);
     const m = RE_GIFT.exec(txt);
     if (!m) return scanMsg(RE_REQ.test(txt) ? "Ese es tu código para recibir: lo escanea tu amigo. Tú escanea el que le sale después de elegir el cromo" : "Ese no es un código de cromo");
@@ -886,6 +1295,64 @@
     closeTrade();
     startOpening("trade", [n], { [n]: "Regalo de un amigo" });
   }
+  /* ───────── Códigos de la parroquia (QR firmado por el administrador, válido un día, uno por móvil) ───────── */
+  const RE_EVT = /(SANTOS1E\.(\d{8})\.([A-Z0-9]{6})\.(S|P|N|C\d{1,3})(V?))\.([A-Za-z0-9_-]{80,90})/;
+  function openParish() {
+    openTrade("parroquia");
+    tradeBody().innerHTML = `<h2>Código de la parroquia</h2><p class="install-sub">Apunta la cámara al código QR que te enseñan en la parroquia.</p>
+      <div class="scan" id="scanBox"></div><p class="scan-msg" id="scanMsg"></p><label class="btn btn-ghost btn-small">🖼️ Usar una foto del código<input type="file" accept="image/*" id="scanFile" hidden></label>`;
+    startScan(onScanParish);
+  }
+  async function onScanParish(txt) {
+    const m = RE_EVT.exec(txt);
+    if (!m) return scanMsg("Ese no es un código de la parroquia");
+    if (onScanParish.busy) return;
+    const [, base, date, id, rw, rec, sig] = m;
+    onScanParish.busy = true; const ok = await adminOk(base, sig); onScanParish.busy = false;
+    if (!ok) return scanMsg("Ese código no es válido");
+    const td = dkey(today()).replace(/-/g, "");
+    if (date !== td) return scanMsg(date < td ? "Ese código ya caducó: era para otro día." : "Ese código todavía no vale: es para otro día.");
+    S.events = S.events || [];
+    if (S.events.includes(id)) return scanMsg("Ya usaste este código en este móvil.");
+    stopScan(); S.events.push(id); S.events = S.events.slice(-300);
+    if (rec) S.advRec = (S.advRec || 0) + 1;
+    save(); if (tradeState) closeTrade();
+    const recT = rec ? " Y puedes recuperar una ventana perdida del Calendario de Adviento (en «Año»)." : "";
+    if (rw === "S") { S.packs++; save(); confetti(70); toast("⛪ ¡Sobre de la parroquia!" + recT, 5000); go("sobres"); }
+    else if (rw === "P") { S.ppacks = (S.ppacks || 0) + 1; save(); confetti(90); toast("⛪ ¡Sobre premium de la parroquia! ✨" + recT, 5000); go("sobres"); }
+    else if (rw === "N") { toast(rec ? "⛪ ¡Listo! Ya puedes recuperar una ventana perdida del Calendario de Adviento." : "⛪ ¡Código leído!", 5000); go("ano"); }
+    else { const n = +rw.slice(1); if (BY_N.get(n)) { startOpening("parroquia", [n], { [n]: "Código de la parroquia ⛪" }); if (rec) setTimeout(() => toast(recT.trim(), 5000), 800); } }
+    checkMedals();
+  }
+
+  /* ───────── Lista de busco: un QR con los cromos que me faltan ───────── */
+  const RE_BUSCO = /SANTOS1B\.([A-Za-z0-9_-]{20,140})/;
+  function buscoCode() {
+    const b = new Uint8Array(Math.ceil(TOTAL / 8));
+    for (const s of SANTOS) if (!has(s.n)) b[(s.n - 1) >> 3] |= 1 << ((s.n - 1) & 7);
+    return `${APP_URL}#busco=SANTOS1B.${btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")}`;
+  }
+  function showBusco() {
+    openTrade("busco");
+    tradeBody().innerHTML = `<h2>Mi lista de busco</h2><p class="install-sub">Te faltan <b>${TOTAL - ownedCount()}</b> cromos. Tu amigo escanea este código y su app le dice cuáles de los que buscas tiene repetidos.</p>
+      <div class="qr-box">${qrSVG(buscoCode())}</div><button class="btn btn-dark btn-block" id="bScan">📷 Leer la lista de un amigo</button>`;
+  }
+  function scanBusco() {
+    tradeBody().innerHTML = `<h2>Lista de un amigo</h2><p class="install-sub">Escanea el código de «Mi lista de busco» de tu amigo.</p><div class="scan" id="scanBox"></div><p class="scan-msg" id="scanMsg"></p>
+      <label class="btn btn-ghost btn-small">🖼️ Usar una foto del código<input type="file" accept="image/*" id="scanFile" hidden></label>`;
+    startScan(onBusco);
+  }
+  function onBusco(txt) {
+    const m = RE_BUSCO.exec(txt); if (!m) return scanMsg("Ese no es un código de lista de busco");
+    let b; try { b = b64u(m[1]); } catch { return scanMsg("Ese código no es válido"); }
+    const wants = SANTOS.filter((s) => (b[(s.n - 1) >> 3] >> ((s.n - 1) & 7)) & 1);
+    const can = wants.filter((s) => (S.owned[s.n] || 0) > 1 && !locked(s));
+    stopScan(); if (!tradeState) openTrade("busco");
+    tradeState.mode = "dar"; tradeState.req = null;
+    tradeBody().innerHTML = `<h2>Lo que busca tu amigo</h2><p class="install-sub">Le faltan ${wants.length} cromos. ${can.length ? `Tú tienes repetidos <b>${can.length}</b>: toca uno para regalárselo y luego escanea su código de «Recibir un cromo».` : "No tienes repetido ninguno de los que busca."}</p>
+      ${can.length ? `<div class="dups trade-dups">${can.map((s) => `<div class="slot has" data-give="${s.n}">${cardHTML(s.n)}<span class="count">×${S.owned[s.n]}</span></div>`).join("")}</div>` : ""}`;
+  }
+
   function scanMsg(m) { const el = $("#scanMsg"); if (el && $("#trade").classList.contains("open")) el.textContent = m; toast(m, m.length > 60 ? 6000 : 3000); vibrate([30, 40, 30]); }
   let jsqrP = null;
   const loadJsQR = () => jsqrP || (jsqrP = new Promise((ok, ko) => { const s = document.createElement("script"); s.src = "js/vendor/jsQR.js"; s.onload = ok; s.onerror = ko; document.head.appendChild(s); }));
@@ -939,9 +1406,15 @@
     const ok = e.target.closest("[data-okg]");
     if (ok) { const x = tradeState.out[+ok.dataset.okg]; if (x) { x.ok = 1; save(); } return $("#tradeBody .trade-dups") ? pickDup() : showPending(); }
     if (e.target.closest("#tScanGift")) return askScanGift();
+    const pf = e.target.closest("[data-pf]"); if (pf) { tradeState.pick = tradeState.pick === +pf.dataset.pf ? null : +pf.dataset.pf; return renderPfList($("#pfQ").value.trim()); }
+    if (e.target.closest("#pfSave")) return savePerfil();
+    if (e.target.closest("#printDp")) { document.body.classList.add("print-dp"); setTimeout(() => { window.print(); setTimeout(() => document.body.classList.remove("print-dp"), 800); }, 50); return; }
+    const ss = e.target.closest("[data-swapsec]"); if (ss) { const id = ss.dataset.swapsec; closeTrade(); return doSwap(SWAP_SEC_COST, id); }
+    if (e.target.closest("#bScan")) return scanBusco();
     const g = e.target.closest("[data-give]"); if (g) return askScanReq(+g.dataset.give);
     const o = e.target.closest("[data-out]"); if (o) { const x = tradeState.out[+o.dataset.out]; return showGift(x.c, x.n); }
   });
+  $("#trade").addEventListener("input", (e) => { if (e.target.id === "pfQ") renderPfList(e.target.value.trim()); });
   $("#trade").addEventListener("change", (e) => {
     if (e.target.id !== "scanFile" || !e.target.files[0] || !tradeState) return;
     const img = new Image(), url = URL.createObjectURL(e.target.files[0]);
@@ -950,6 +1423,18 @@
   });
 
   /* ───────── Arranque ───────── */
+  // Pedimos al navegador que no borre los datos del álbum
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persisted().then((p) => p || navigator.storage.persist()).catch(() => {}); } catch {}
+  if (!S.firstSeen) { S.firstSeen = S.welcome ? Date.now() - 31 * 864e5 : Date.now(); save(); } // a quien ya jugaba le recordamos la copia
+  { const D0 = dayState(); if (D0.done.length === D0.retos.length) { S.full = S.full || []; if (!S.full.includes(dkey(today()))) { S.full.push(dkey(today())); save(); } } }
+  // Regreso amable: si vuelves tras más de 14 días, te espera un sobre
+  if (S.welcome && S.lastSeen && Date.now() - S.lastSeen > 14 * 864e5) {
+    S.packs = (S.packs || 0) + 1;
+    const falta = TOTAL - ownedCount();
+    setTimeout(() => toast(`¡Qué alegría verte de vuelta! Te esperaba un sobre. Te faltan ${falta} cromos.`, 5000), 2500);
+  }
+  S.lastSeen = Date.now(); save();
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { S.lastSeen = Date.now(); save(); } });
   maybeNews();
   welcome();
   maybeGift();
@@ -957,13 +1442,15 @@
   const start = (location.hash || "").slice(1);
   function handleLink(delay) { // enlaces de intercambio leídos con la cámara del móvil
     let h = location.hash.slice(1); try { h = decodeURIComponent(h); } catch {}
-    const link = /^(dar|recibir)=(.+)$/.exec(h);
+    const link = /^(dar|recibir|parroquia|busco)=(.+)$/.exec(h);
     if (!link) return false;
     try { history.replaceState(null, "", location.pathname + location.search); } catch {}
     setTimeout(() => {
       if (tradeState) closeTrade();
       let isAdmin = false; try { isAdmin = !!localStorage.getItem("album-santos-admin-key"); } catch {}
       if (link[1] === "dar" && isAdmin && RE_REQ.test(link[2])) { location.href = "admin.html#" + RE_REQ.exec(link[2])[0]; return; }
+      if (link[1] === "parroquia") { go("ano"); onScanParish(link[2]); return; }
+      if (link[1] === "busco") { go("mas"); onBusco(link[2]); return; }
       if (link[1] === "dar") { if (RE_REQ.test(link[2])) { go("mas"); openTrade("dar", link[2]); } }
       else { go("mas"); onScanGift(link[2]); }
     }, delay);
@@ -971,9 +1458,9 @@
   }
   handleLink(700);
   window.addEventListener("hashchange", () => handleLink(50));
-  go(["hoy", "album", "sobres", "mas"].includes(start) ? start : "hoy");
+  go(["hoy", "album", "sobres", "mas", "ano"].includes(start) ? start : "hoy");
   $("#opening").addEventListener("click", (e) => { if (e.target === $("#opening") && $("#summary").classList.contains("show")) closeOpening(); });
 
   // Para pruebas desde la consola: window.__album
-  window.__album = { S, saintsOfDay, bigFeast, buildPack, easter, drawRandom, giftCode, reqCode, onScanGift: (t) => onScanGift(t), onScanReq: (t) => onScanReq(t), openTrade };
+  window.__album = { S, seasonOf, especialHoy, claimsList, advInfo, solemn, medalDefs, lentSteps, flowers, weekText, saintsOfDay, bigFeast, buildPack, easter, drawRandom, giftCode, reqCode, onScanGift: (t) => onScanGift(t), onScanReq: (t) => onScanReq(t), openTrade };
 })();

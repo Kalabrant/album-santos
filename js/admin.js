@@ -51,12 +51,60 @@
     $("#grid").innerHTML = list.map((s) => `<div class="adm-c ${s.e ? "esp" : ""}" data-n="${s.n}"><img loading="lazy" src="${img(s.n)}" alt=""><b>${esc(lab(s))}</b><span>${esc(s.short)}</span></div>`).join("") || `<p class="sub">Nada con esa búsqueda.</p>`;
   }
   let log = []; try { log = JSON.parse(localStorage.getItem(LOG) || "[]"); } catch {}
-  $("#adm").innerHTML = `<h1>Regalar cromos</h1><p class="sub">Elige cualquier cromo. Luego escanea el código de la persona (en su app: Repetidas → Recibir un cromo) y enséñale el código que aparece.</p>
+  $("#adm").innerHTML = `<div class="panel" id="evPanel"><h3>⛪ Código de la parroquia</h3>
+      <p>Un código QR para enseñar en Misa, catequesis o una actividad. Vale <b>solo el día que elijas</b> y <b>una vez por móvil</b>; lo puede escanear todo el que esté.</p>
+      <label class="fld"><span>Premio</span><select class="inp" id="evRw"><option value="S">Un sobre</option><option value="P">Un sobre premium</option><option value="C">Un cromo concreto</option><option value="N">Solo recuperar una ventana de Adviento</option></select></label>
+      <label class="fld" id="evCWrap" style="display:none"><span>Número o letra del cromo</span><input class="inp" id="evC" placeholder="Ej.: 90 o A" autocomplete="off"></label>
+      <label class="fld"><span>Día en que vale</span><input class="inp" type="date" id="evDate"></label>
+      <label class="fld" style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="evRec"> <span style="margin:0">También permite recuperar una ventana perdida del Calendario de Adviento</span></label>
+      <button class="btn btn-primary btn-block" id="evMake">Crear código</button>
+      <div id="evList"></div></div>
+    <h1>Regalar cromos</h1><p class="sub">Elige cualquier cromo. Luego escanea el código de la persona (en su app: Repetidas → Recibir un cromo) y enséñale el código que aparece.</p>
     <div class="panel" id="pre" style="display:none;background:#e7f7ef"><b>✓ Ya leí el código de la persona.</b> Ahora toca el cromo que quieres regalarle.</div>
     <label class="search"><input id="q" type="search" placeholder="Busca por nombre, número o letra" autocomplete="off"></label><div class="adm-grid" id="grid"></div>
     <p class="log" id="log"></p>`;
   const renderLog = () => { $("#log").textContent = log.length ? `Has regalado ${log.length} ${log.length === 1 ? "cromo" : "cromos"} desde este móvil.` : ""; };
   render(); renderLog(); showPre();
+
+  /* ── Códigos de la parroquia ── */
+  const LOGE = "album-santos-admin-eventos";
+  const pad = (n) => String(n).padStart(2, "0");
+  const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+  let evs = []; try { evs = JSON.parse(localStorage.getItem(LOGE) || "[]"); } catch {}
+  const rid = (k) => Array.from(crypto.getRandomValues(new Uint8Array(k)), (b) => "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[b % 32]).join("");
+  const MES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+  const rwText = (rw, rec) => (rw === "S" ? "Un sobre" : rw === "P" ? "Un sobre premium" : rw === "N" ? "Recuperar una ventana" : `Cromo ${esc(lab(BY_N.get(+rw.slice(1)) || { n: rw.slice(1) }))}: ${esc((BY_N.get(+rw.slice(1)) || {}).short || "")}`) + (rec && rw !== "N" ? " + recuperar ventana" : "");
+  const advNow = () => { const d = new Date(); return (d.getMonth() === 10 && d.getDate() >= 22) || d.getMonth() === 11; };
+  $("#evDate").value = todayISO(); $("#evRec").checked = advNow();
+  $("#evRw").addEventListener("change", () => { $("#evCWrap").style.display = $("#evRw").value === "C" ? "" : "none"; if ($("#evRw").value === "N") $("#evRec").checked = true; });
+  function renderEv() {
+    const t = todayISO(), list = evs.filter((x) => x.day >= t).slice(-8).reverse();
+    $("#evList").innerHTML = list.length ? `<p class="note" style="margin-top:14px"><b>Códigos ya creados</b> (enseña el mismo durante todo el día):</p>` + list.map((x, i) => `<div class="fam-row" style="margin-top:6px"><span>${+x.day.slice(8)} ${MES[+x.day.slice(5, 7) - 1]} · ${rwText(x.rw, x.rec)}</span><button class="btn btn-ghost btn-small" data-ev="${evs.indexOf(x)}">Enseñar</button></div>`).join("") : "";
+  }
+  renderEv();
+  function showEv(x) {
+    const qr = qrcode(0, "M"); qr.addData(x.code); qr.make();
+    $("#panel").classList.add("open"); $("#panel .install-sheet").scrollTop = 0;
+    $("#pBody").innerHTML = `<h2 style="font-size:24px">⛪ Código de la parroquia</h2><p class="install-sub">${rwText(x.rw, x.rec)}. Vale el ${+x.day.slice(8)} de ${MES[+x.day.slice(5, 7) - 1]}, una vez por móvil. Se escanea en la app: <b>Año → Escanear código de la parroquia</b>, o con la cámara del móvil.</p>
+      <div class="qr-box" id="evQR" style="width:min(420px,88vw)">${qr.createSvgTag({ cellSize: 8, margin: 2, scalable: true })}</div>
+      <div class="btn-row" style="justify-content:center"><button class="btn btn-dark btn-small" id="evFull">⛶ Pantalla completa</button><a class="btn btn-ghost btn-small" id="evImg" download="codigo-parroquia-${x.day}.gif" href="${qr.createDataURL(10, 4)}">⬇️ Descargar imagen</a></div>`;
+  }
+  $("#evPanel").addEventListener("click", async (e) => {
+    const sh = e.target.closest("[data-ev]"); if (sh) return showEv(evs[+sh.dataset.ev]);
+    if (!e.target.closest("#evMake")) return;
+    let rw = $("#evRw").value;
+    if (rw === "C") {
+      const v = $("#evC").value.trim(); const s = SANTOS.find((x) => String(x.n) === v || (x.l && x.l.toLowerCase() === v.toLowerCase()));
+      if (!s) return toast("No encuentro ese cromo"); rw = "C" + s.n;
+    }
+    const day = $("#evDate").value; if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return toast("Elige el día");
+    const rec = $("#evRec").checked;
+    const base = `SANTOS1E.${day.replace(/-/g, "")}.${rid(6)}.${rw}${rec ? "V" : ""}`;
+    let code; try { code = `${APP_URL}#parroquia=${base}.${await sign(base)}`; } catch (err) { return toast("No pude crear el código: " + (err && err.message || err)); }
+    const x = { day, rw, rec, code, t: Date.now() };
+    evs.push(x); evs = evs.slice(-60); try { localStorage.setItem(LOGE, JSON.stringify(evs)); } catch {}
+    renderEv(); showEv(x);
+  });
   $("#q").addEventListener("input", (e) => { q = e.target.value.trim(); render(); });
 
   /* ── Escáner ── */
@@ -141,7 +189,9 @@
       <button class="btn btn-primary btn-block" id="pDone">Hecho</button>`;
   }
   $("#grid").addEventListener("click", (e) => { const c = e.target.closest("[data-n]"); if (c) open(+c.dataset.n); });
-  $("#panel").addEventListener("click", (e) => { if (e.target.closest("#reCam")) return startScan(); if (e.target.closest("#pClose") || e.target.closest("#pDone") || e.target === $("#panel")) close(); });
+  $("#panel").addEventListener("click", (e) => {
+    if (e.target.closest("#evFull")) { const q = $("#evQR"); (q.requestFullscreen || q.webkitRequestFullscreen || (() => {})).call(q); return; }
+    if (e.target.closest("#reCam")) return startScan(); if (e.target.closest("#pClose") || e.target.closest("#pDone") || e.target === $("#panel")) close(); });
   $("#panel").addEventListener("change", (e) => {
     if (e.target.id !== "scanFile" || !e.target.files[0]) return;
     const im = new Image(), url = URL.createObjectURL(e.target.files[0]);
