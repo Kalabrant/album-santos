@@ -11,6 +11,16 @@ App web instalable (PWA) para coleccionar los cromos de 500 santos y advocacione
 - 10 repetidas se cambian por 1 cromo que falte.
 - 35 cromos premium con brillo irisado.
 
+## El año litúrgico (pestaña «Año»)
+- **Temporadas**: Adviento y Navidad, Tiempo ordinario, Cuaresma (Camino de 40 días), Pascua (corona de flores en mayo), Corpus y verano (modo vacaciones), vuelta al cole y Todos los Santos. Se reconocen solas por la fecha.
+- **Calendario de Adviento** (`data/temporadas.js`, `ADVIENTO`): una ventana con un cromo cada día, se abre entrando de 5:00 a 6:59. Con 20 ventanas, sobre premium en Navidad. Para cada año nuevo hay que añadir su lista.
+- **Especial del mes**: el día de su fiesta, el cromo especial sale seguro a quien cumpla los 5 retos.
+- **Medallas** (cada sección completa regala un sobre), **santo patrono y cumpleaños** (sobre extra), **diploma** al completar los 700 cromos.
+- **Códigos de la parroquia**: en `admin.html` se crea un QR firmado que vale un día y una vez por móvil (sobre, sobre premium, un cromo concreto y/o recuperar una ventana de Adviento).
+- **Día de gracia**: fallar un día por semana no rompe la racha. Viernes Santo sin sobres.
+- **Repetidas**: canje por sección (20 repetidas) cuando faltan menos de 100, lista de busco por QR y álbumes de la familia.
+- **Novedades**: la lista `NEWS` de `js/app.js`; cada aviso puede llevar la fecha desde la que se muestra.
+
 ## Añadir imágenes de santos
 1. Pon los `.jpg` (con nombre «N. NOMBRE.jpg», como salen del PDF) en una carpeta.
 2. Ejecuta `pip install pillow` y luego
