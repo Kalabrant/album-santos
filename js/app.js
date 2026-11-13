@@ -643,17 +643,23 @@
     const n = vList[vIdx]; if (vCleanup) vCleanup();
     $("#viewerCard").innerHTML = cardHTML(n, { flippable: true, sway: true, lazy: false });
     const card = $("#viewerCard .card"); vCleanup = attachTilt(card);
-    let flipT;
+    let timers = [];
+    const later = (fn, ms) => timers.push(setTimeout(fn, ms));
+    const c3 = card.querySelector(".card-3d");
     card.addEventListener("click", () => {
-      clearTimeout(flipT);
+      timers.forEach(clearTimeout); timers = [];
       if (!card.classList.contains("flipped")) {
-        card.classList.add("flipped"); setTimeout(() => card.classList.add("hide-front"), 330);
+        card.classList.remove("sway"); // el balanceo no debe pisar el giro
+        card.classList.add("flipped"); later(() => card.classList.add("hide-front"), 110);
         // al terminar el giro, el reverso queda plano (sin 3D) para poder desplazarlo con el dedo
-        flipT = setTimeout(() => card.classList.add("flat"), 720);
+        later(() => card.classList.add("flat"), 720);
       } else {
-        card.classList.remove("flat");
+        // volver a poner el cromo girado sin animación, y desde ahí girarlo de vuelta
+        card.classList.remove("sway");
+        c3.style.transition = "none"; card.classList.remove("flat"); void c3.offsetWidth; c3.style.transition = "";
         requestAnimationFrame(() => requestAnimationFrame(() => card.classList.remove("flipped")));
-        setTimeout(() => card.classList.remove("hide-front"), 330);
+        later(() => card.classList.remove("hide-front"), 110);
+        later(() => card.classList.add("sway"), 800);
       }
       vibrate(10);
       $("#viewerHint").textContent = card.classList.contains("flipped") ? "Desliza para leer · toca para volver" : "Toca el cromo para darle la vuelta";
@@ -749,7 +755,7 @@
     const n = +c.dataset.n;
     if (c.classList.contains("flipped") && !c.dataset.revealed) { // boca abajo → mostrar
       c.dataset.revealed = "1"; c.classList.remove("flipped");
-      setTimeout(() => c.classList.remove("hide-front"), 300); // a mitad del giro: en iPhone el anverso se veía en espejo
+      setTimeout(() => c.classList.remove("hide-front"), 100); // a mitad del giro: en iPhone el anverso se veía en espejo
       const s = BY_N.get(n);
       $("#tag").innerHTML = `${pack.isNew[n] ? '<span class="new">¡Nuevo!</span>' : '<span class="dup">Repetida</span>'}${s.p ? '<span class="prem">★ Premium</span>' : ""}${pack.why[n] ? `<span class="why">${esc(pack.why[n])}</span>` : ""}`;
       vibrate(s.p ? [40, 40, 80] : 25);
